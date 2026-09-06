@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-
 import { toast } from "react-toastify";
 
 import FacultyLayout from "../../layouts/FacultyLayout";
-
 import { useAuth } from "../../context/AuthContext";
 
 import {
@@ -24,73 +22,57 @@ import {
 function FacultyCurriculum() {
 
     const { user } = useAuth();
-    console.log("LOGGED IN USER:", user);
-    console.log("USER ROLE:", user?.role);
-    console.log("USER DEPARTMENT:", user?.departmentCode);
 
     // =====================================================
     // BASIC DATA
     // =====================================================
 
-    const [regulations, setRegulations] =
-        useState([]);
+    const [regulations, setRegulations] = useState([]);
+    const [departments, setDepartments] = useState([]);
 
-    const [departments, setDepartments] =
-        useState([]);
-
-
-    const [regulationCode, setRegulationCode] =
-        useState("");
-
-    const [departmentCode, setDepartmentCode] =
-        useState("");
-
-    const [semester, setSemester] =
-        useState("");
+    const [regulationCode, setRegulationCode] = useState("");
+    const [departmentCode, setDepartmentCode] = useState("");
+    const [semester, setSemester] = useState("");
 
 
     // =====================================================
     // CURRICULUM
     // =====================================================
 
-    const [courses, setCourses] =
-        useState([]);
-
-    const [electives, setElectives] =
-        useState([]);
+    const [courses, setCourses] = useState([]);
+    const [electives, setElectives] = useState([]);
 
 
     // =====================================================
     // ELECTIVE SUBJECTS
     // =====================================================
 
-    const [subjects, setSubjects] =
-        useState({});
+    const [subjects, setSubjects] = useState({});
 
 
     // =====================================================
     // SELECTED SUBJECTS
+    //
+    // Structure:
+    //
+    // {
+    //     groupId: [subjectId1, subjectId2]
+    // }
+    //
     // =====================================================
 
-    const [selections, setSelections] =
-        useState({});
+    const [selections, setSelections] = useState({});
 
 
     // =====================================================
     // LOADING
     // =====================================================
 
-    const [initialLoading, setInitialLoading] =
-        useState(true);
+    const [initialLoading, setInitialLoading] = useState(true);
+    const [curriculumLoading, setCurriculumLoading] = useState(false);
+    const [saving, setSaving] = useState(false);
 
-    const [curriculumLoading, setCurriculumLoading] =
-        useState(false);
-
-    const [saving, setSaving] =
-        useState(false);
-
-    const [subjectsLoading, setSubjectsLoading] =
-        useState({});
+    const [subjectsLoading, setSubjectsLoading] = useState({});
 
 
     // =====================================================
@@ -121,10 +103,6 @@ function FacultyCurriculum() {
                 ?.trim()
                 .toUpperCase()
         );
-    console.log("USER ROLE:", user?.role);
-    console.log("USER DEPARTMENT:", user?.departmentCode);
-    console.log("SELECTED DEPARTMENT:", departmentCode);
-    console.log("CAN EDIT:", canEdit);
 
 
     // =====================================================
@@ -147,7 +125,6 @@ function FacultyCurriculum() {
                     getAllDepartments()
                 ]);
 
-
                 setRegulations(
                     regulationResponse.data || []
                 );
@@ -157,9 +134,7 @@ function FacultyCurriculum() {
                 );
 
 
-                // -----------------------------------------
                 // Automatically select user's department
-                // -----------------------------------------
 
                 if (userDepartmentCode) {
 
@@ -231,14 +206,12 @@ function FacultyCurriculum() {
 
             setCurriculumLoading(true);
 
-
             const response =
                 await getSemesterCurriculum(
                     regulationCode,
                     departmentCode,
                     Number(semester)
                 );
-
 
             const curriculum =
                 response.data;
@@ -256,23 +229,23 @@ function FacultyCurriculum() {
             setElectives(groups);
 
 
-            // ---------------------------------------------
-            // Existing selections
-            // ---------------------------------------------
+            // =================================================
+            // EXISTING MULTIPLE SELECTIONS
+            // =================================================
 
             const existingSelections = {};
 
 
             groups.forEach((group) => {
 
-                if (group.selectedSubject) {
+                const selectedSubjects =
+                    group.selectedSubjects || [];
 
-                    existingSelections[
-                        group.id
-                    ] =
-                        group.selectedSubject.id;
-                }
 
+                existingSelections[group.id] =
+                    selectedSubjects.map(
+                        subject => Number(subject.id)
+                    );
             });
 
 
@@ -281,9 +254,9 @@ function FacultyCurriculum() {
             );
 
 
-            // ---------------------------------------------
-            // Load subjects
-            // ---------------------------------------------
+            // =================================================
+            // LOAD ELECTIVE SUBJECTS
+            // =================================================
 
             await loadElectiveSubjects(
                 groups
@@ -296,7 +269,6 @@ function FacultyCurriculum() {
                 "Failed to load curriculum:",
                 error
             );
-
 
             toast.error(
                 error.response
@@ -322,9 +294,7 @@ function FacultyCurriculum() {
     // LOAD ELECTIVE SUBJECTS
     // =====================================================
 
-    const loadElectiveSubjects = async (
-        groups
-    ) => {
+    const loadElectiveSubjects = async (groups) => {
 
         const subjectMap = {};
 
@@ -382,9 +352,7 @@ function FacultyCurriculum() {
     // CHANGE REGULATION
     // =====================================================
 
-    const handleRegulationChange = (
-        event
-    ) => {
+    const handleRegulationChange = (event) => {
 
         setRegulationCode(
             event.target.value
@@ -398,9 +366,7 @@ function FacultyCurriculum() {
     // CHANGE DEPARTMENT
     // =====================================================
 
-    const handleDepartmentChange = (
-        event
-    ) => {
+    const handleDepartmentChange = (event) => {
 
         setDepartmentCode(
             event.target.value
@@ -414,9 +380,7 @@ function FacultyCurriculum() {
     // CHANGE SEMESTER
     // =====================================================
 
-    const handleSemesterChange = (
-        event
-    ) => {
+    const handleSemesterChange = (event) => {
 
         setSemester(
             event.target.value
@@ -433,11 +397,8 @@ function FacultyCurriculum() {
     const clearCurriculum = () => {
 
         setCourses([]);
-
         setElectives([]);
-
         setSubjects({});
-
         setSelections({});
     };
 
@@ -456,16 +417,71 @@ function FacultyCurriculum() {
         }
 
 
-        setSelections(
-            previous => ({
+        const numericSubjectId =
+            Number(subjectId);
+
+
+        setSelections(previous => {
+
+            const currentSelections =
+                previous[groupId] || [];
+
+
+            const alreadySelected =
+                currentSelections.includes(
+                    numericSubjectId
+                );
+
+
+            if (alreadySelected) {
+
+                return {
+                    ...previous,
+
+                    [groupId]:
+                        currentSelections.filter(
+                            id => id !== numericSubjectId
+                        )
+                };
+            }
+
+
+            return {
                 ...previous,
 
-                [groupId]:
-                    subjectId
-                        ? Number(subjectId)
-                        : null
-            })
-        );
+                [groupId]: [
+                    ...currentSelections,
+                    numericSubjectId
+                ]
+            };
+        });
+    };
+
+
+    // =====================================================
+    // REMOVE SELECTED SUBJECT
+    // =====================================================
+
+    const removeSelection = (
+        groupId,
+        subjectId
+    ) => {
+
+        if (!canEdit) {
+            return;
+        }
+
+
+        setSelections(previous => ({
+            ...previous,
+
+            [groupId]:
+                (previous[groupId] || [])
+                    .filter(
+                        id =>
+                            id !== Number(subjectId)
+                    )
+        }));
     };
 
 
@@ -499,23 +515,29 @@ function FacultyCurriculum() {
         }
 
 
-        // ---------------------------------------------
-        // Build selection request
-        // ---------------------------------------------
+        // =================================================
+        // BUILD SELECTION REQUEST
+        // =================================================
 
-        const selectionList =
-            electives
-                .filter(
-                    group =>
-                        selections[group.id]
-                )
-                .map(group => ({
-                    electiveGroupId:
-                        group.id,
+        const selectionList = [];
 
-                    subjectId:
-                        selections[group.id]
-                }));
+
+        electives.forEach(group => {
+
+            const groupSelections =
+                selections[group.id] || [];
+
+
+            groupSelections.forEach(subjectId => {
+
+                selectionList.push({
+                    electiveGroupId: group.id,
+                    subjectId: subjectId
+                });
+
+            });
+
+        });
 
 
         if (selectionList.length === 0) {
@@ -538,7 +560,9 @@ function FacultyCurriculum() {
                     regulationCode,
                     departmentCode,
                     Number(semester),
-                    selectionList
+                    {
+                        selections: selectionList
+                    }
                 );
 
 
@@ -548,9 +572,7 @@ function FacultyCurriculum() {
             );
 
 
-            // -----------------------------------------
             // Refresh curriculum
-            // -----------------------------------------
 
             await handleLoadCurriculum();
 
@@ -579,6 +601,52 @@ function FacultyCurriculum() {
 
 
     // =====================================================
+    // SELECTED ELECTIVE SUBJECTS
+    // =====================================================
+
+    const selectedElectiveSubjects =
+        useMemo(() => {
+
+            const result = [];
+
+
+            electives.forEach(group => {
+
+                const selectedIds =
+                    selections[group.id] || [];
+
+
+                selectedIds.forEach(selectedId => {
+
+                    const subject =
+                        subjects[group.id]
+                            ?.find(
+                                subject =>
+                                    Number(subject.id) ===
+                                    Number(selectedId)
+                            );
+
+
+                    if (subject) {
+
+                        result.push(subject);
+                    }
+
+                });
+
+            });
+
+
+            return result;
+
+        }, [
+            electives,
+            selections,
+            subjects
+        ]);
+
+
+    // =====================================================
     // TOTAL NORMAL COURSE CREDITS
     // =====================================================
 
@@ -589,52 +657,12 @@ function FacultyCurriculum() {
                 (total, course) =>
                     total +
                     (
-                        Number(course.credits) ||
-                        0
+                        Number(course.credits) || 0
                     ),
                 0
             );
 
         }, [courses]);
-
-
-    // =====================================================
-    // SELECTED ELECTIVE SUBJECTS
-    // =====================================================
-
-    const selectedElectiveSubjects =
-        useMemo(() => {
-
-            return electives
-                .map(group => {
-
-                    const selectedId =
-                        selections[group.id];
-
-
-                    if (!selectedId) {
-                        return null;
-                    }
-
-
-                    return (
-                        subjects[group.id]
-                            ?.find(
-                                subject =>
-                                    subject.id ===
-                                    selectedId
-                            ) ||
-                        null
-                    );
-
-                })
-                .filter(Boolean);
-
-        }, [
-            electives,
-            selections,
-            subjects
-        ]);
 
 
     // =====================================================
@@ -644,19 +672,26 @@ function FacultyCurriculum() {
     const totalElectiveCredits =
         useMemo(() => {
 
-            return selectedElectiveSubjects.reduce(
-                (total, subject) =>
-                    total +
-                    (
-                        Number(subject.credits) ||
-                        0
-                    ),
+            return electives.reduce(
+                (total, group) => {
+
+                    const selectedIds =
+                        selections[group.id] || [];
+
+                    if (selectedIds.length === 0) {
+                        return total;
+                    }
+
+                    // Count the ELECTIVE GROUP credits only once.
+                    // Multiple selected subjects belong to the same
+                    // curriculum slot and must not multiply credits.
+                    return total +
+                        (Number(group.credits) || 0);
+                },
                 0
             );
 
-        }, [
-            selectedElectiveSubjects
-        ]);
+        }, [electives, selections]);
 
 
     // =====================================================
@@ -669,7 +704,7 @@ function FacultyCurriculum() {
 
 
     // =====================================================
-    // TOTAL L-T-P
+    // TOTAL L
     // =====================================================
 
     const totalLecture =
@@ -677,60 +712,87 @@ function FacultyCurriculum() {
             (total, course) =>
                 total +
                 (
-                    Number(course.lecture) ||
-                    0
+                    Number(course.lecture) || 0
                 ),
             0
         ) +
-        selectedElectiveSubjects.reduce(
-            (total, subject) =>
-                total +
-                (
-                    Number(subject.lecture) ||
-                    0
-                ),
+        electives.reduce(
+            (total, group) => {
+
+                const selectedIds =
+                    selections[group.id] || [];
+
+                if (selectedIds.length === 0) {
+                    return total;
+                }
+
+                // Count group L only once, regardless of
+                // how many subjects are selected.
+                return total +
+                    (Number(group.lecture) || 0);
+            },
             0
         );
 
+
+    // =====================================================
+    // TOTAL T
+    // =====================================================
 
     const totalTutorial =
         courses.reduce(
             (total, course) =>
                 total +
                 (
-                    Number(course.tutorial) ||
-                    0
+                    Number(course.tutorial) || 0
                 ),
             0
         ) +
-        selectedElectiveSubjects.reduce(
-            (total, subject) =>
-                total +
-                (
-                    Number(subject.tutorial) ||
-                    0
-                ),
+        electives.reduce(
+            (total, group) => {
+
+                const selectedIds =
+                    selections[group.id] || [];
+
+                if (selectedIds.length === 0) {
+                    return total;
+                }
+
+                // Count group T only once.
+                return total +
+                    (Number(group.tutorial) || 0);
+            },
             0
         );
 
+
+    // =====================================================
+    // TOTAL P
+    // =====================================================
 
     const totalPractical =
         courses.reduce(
             (total, course) =>
                 total +
                 (
-                    Number(course.practical) ||
-                    0
+                    Number(course.practical) || 0
                 ),
             0
         ) +
-        selectedElectiveSubjects.reduce(
-            (total, subject) =>
-                total +
-                (
-                    Number(subject.practical) ||
-                    0
-                ),
+        electives.reduce(
+            (total, group) => {
+
+                const selectedIds =
+                    selections[group.id] || [];
+
+                if (selectedIds.length === 0) {
+                    return total;
+                }
+
+                // Count group P only once.
+                return total +
+                    (Number(group.practical) || 0);
+            },
             0
         );
 
@@ -743,9 +805,7 @@ function FacultyCurriculum() {
     // CATEGORY LABEL
     // =====================================================
 
-    const getCategoryLabel = (
-        category
-    ) => {
+    const getCategoryLabel = (category) => {
 
         const labels = {
 
@@ -820,6 +880,10 @@ function FacultyCurriculum() {
     }
 
 
+    // =====================================================
+    // UI
+    // =====================================================
+
     return (
         <FacultyLayout>
 
@@ -886,9 +950,7 @@ function FacultyCurriculum() {
 
                             <select
                                 className="form-select"
-                                value={
-                                    regulationCode
-                                }
+                                value={regulationCode}
                                 onChange={
                                     handleRegulationChange
                                 }
@@ -909,11 +971,9 @@ function FacultyCurriculum() {
                                                 regulation.code
                                             }
                                         >
-
                                             {
                                                 regulation.code
                                             }
-
                                         </option>
 
                                     )
@@ -934,9 +994,7 @@ function FacultyCurriculum() {
 
                             <select
                                 className="form-select"
-                                value={
-                                    departmentCode
-                                }
+                                value={departmentCode}
                                 onChange={
                                     handleDepartmentChange
                                 }
@@ -1027,9 +1085,7 @@ function FacultyCurriculum() {
 
                             <select
                                 className="form-select"
-                                value={
-                                    semester
-                                }
+                                value={semester}
                                 onChange={
                                     handleSemesterChange
                                 }
@@ -1040,18 +1096,16 @@ function FacultyCurriculum() {
                                 </option>
 
                                 {[1, 2, 3, 4, 5, 6, 7, 8]
-                                    .map(
-                                        sem => (
+                                    .map(sem => (
 
-                                            <option
-                                                key={sem}
-                                                value={sem}
-                                            >
-                                                Semester {sem}
-                                            </option>
+                                        <option
+                                            key={sem}
+                                            value={sem}
+                                        >
+                                            Semester {sem}
+                                        </option>
 
-                                        )
-                                    )}
+                                    ))}
 
                             </select>
 
@@ -1105,584 +1159,638 @@ function FacultyCurriculum() {
             {(courses.length > 0 ||
                 electives.length > 0) && (
 
-                    <>
+                <>
 
-                        {/* =================================================
-                        VIEW ONLY NOTICE
-                    ================================================= */}
+                    {/* VIEW ONLY NOTICE */}
 
-                        {!canEdit && (
+                    {!canEdit && (
 
-                            <div className="alert alert-info border-0 shadow-sm">
+                        <div className="alert alert-info border-0 shadow-sm">
 
-                                <i className="bi bi-info-circle me-2"></i>
+                            <i className="bi bi-info-circle me-2"></i>
 
-                                You are viewing the{" "}
+                            You are viewing the{" "}
 
-                                <strong>
-                                    {departmentCode}
-                                </strong>
+                            <strong>
+                                {departmentCode}
+                            </strong>
 
-                                {" "}department curriculum.
+                            {" "}department curriculum.
 
-                                You can view the curriculum,
-                                but only the HOD/DEAN of that
-                                department can modify elective
-                                selections.
-
-                            </div>
-
-                        )}
-
-
-                        {/* =================================================
-                        SEMESTER HEADER
-                    ================================================= */}
-
-                        <div className="card border-0 shadow-sm mb-4">
-
-                            <div className="card-body p-4">
-
-                                <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center">
-
-                                    <div>
-
-                                        <small className="text-muted">
-                                            {regulationCode}
-                                            {" • "}
-                                            {departmentCode}
-                                        </small>
-
-                                        <h4 className="fw-bold mb-0 mt-1">
-
-                                            Semester {semester}
-
-                                        </h4>
-
-                                    </div>
-
-
-                                    <div className="mt-3 mt-md-0">
-
-                                        {canEdit ? (
-
-                                            <span className="badge bg-success-subtle text-success px-3 py-2">
-
-                                                <i className="bi bi-pencil-square me-1"></i>
-
-                                                Editable
-
-                                            </span>
-
-                                        ) : (
-
-                                            <span className="badge bg-secondary-subtle text-secondary px-3 py-2">
-
-                                                <i className="bi bi-eye me-1"></i>
-
-                                                View Only
-
-                                            </span>
-
-                                        )}
-
-                                    </div>
-
-                                </div>
-
-                            </div>
+                            You can view the curriculum,
+                            but only the HOD/DEAN of that
+                            department can modify elective
+                            selections.
 
                         </div>
 
+                    )}
 
-                        {/* =================================================
-                        SUMMARY
-                    ================================================= */}
 
-                        <div className="row g-3 mb-4">
+                    {/* SEMESTER HEADER */}
 
-                            {/* COURSES */}
+                    <div className="card border-0 shadow-sm mb-4">
 
-                            <div className="col-12 col-md-4">
+                        <div className="card-body p-4">
 
-                                <div className="card border-0 shadow-sm h-100">
+                            <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center">
 
-                                    <div className="card-body">
-
-                                        <div className="d-flex align-items-center">
-
-                                            <div
-                                                className="bg-primary-subtle text-primary rounded-3 d-flex align-items-center justify-content-center me-3"
-                                                style={{
-                                                    width: "48px",
-                                                    height: "48px"
-                                                }}
-                                            >
-
-                                                <i className="bi bi-journal-bookmark fs-5"></i>
-
-                                            </div>
-
-
-                                            <div>
-
-                                                <small className="text-muted">
-                                                    Courses
-                                                </small>
-
-                                                <h4 className="fw-bold mb-0">
-                                                    {
-                                                        courses.length
-                                                    }
-                                                </h4>
-
-                                            </div>
-
-                                        </div>
-
-                                    </div>
-
-                                </div>
-
-                            </div>
-
-
-                            {/* CREDITS */}
-
-                            <div className="col-12 col-md-4">
-
-                                <div className="card border-0 shadow-sm h-100">
-
-                                    <div className="card-body">
-
-                                        <div className="d-flex align-items-center">
-
-                                            <div
-                                                className="bg-success-subtle text-success rounded-3 d-flex align-items-center justify-content-center me-3"
-                                                style={{
-                                                    width: "48px",
-                                                    height: "48px"
-                                                }}
-                                            >
-
-                                                <i className="bi bi-award fs-5"></i>
-
-                                            </div>
-
-
-                                            <div>
-
-                                                <small className="text-muted">
-                                                    Total Credits
-                                                </small>
-
-                                                <h4 className="fw-bold mb-0">
-                                                    {
-                                                        totalCredits
-                                                    }
-                                                </h4>
-
-                                                <small className="text-muted">
-                                                    Courses: {
-                                                        totalCourseCredits
-                                                    }
-
-                                                    {" + "}
-
-                                                    Electives: {
-                                                        totalElectiveCredits
-                                                    }
-                                                </small>
-
-                                            </div>
-
-                                        </div>
-
-                                    </div>
-
-                                </div>
-
-                            </div>
-
-
-                            {/* L-T-P */}
-
-                            <div className="col-12 col-md-4">
-
-                                <div className="card border-0 shadow-sm h-100">
-
-                                    <div className="card-body">
-
-                                        <div className="d-flex align-items-center">
-
-                                            <div
-                                                className="bg-warning-subtle text-warning rounded-3 d-flex align-items-center justify-content-center me-3"
-                                                style={{
-                                                    width: "48px",
-                                                    height: "48px"
-                                                }}
-                                            >
-
-                                                <i className="bi bi-grid-3x3-gap fs-5"></i>
-
-                                            </div>
-
-
-                                            <div>
-
-                                                <small className="text-muted">
-                                                    Total L-T-P
-                                                </small>
-
-                                                <h4 className="fw-bold mb-0">
-                                                    {totalLTP}
-                                                </h4>
-
-                                            </div>
-
-                                        </div>
-
-                                    </div>
-
-                                </div>
-
-                            </div>
-
-                        </div>
-
-
-                        {/* =================================================
-                        NORMAL COURSES
-                    ================================================= */}
-
-                        {courses.length > 0 && (
-
-                            <div className="card border-0 shadow-sm mb-4">
-
-                                <div className="card-header bg-white py-3">
-
-                                    <h5 className="fw-bold mb-0">
-
-                                        <i className="bi bi-book me-2 text-primary"></i>
-
-                                        Courses
-
-                                    </h5>
-
-                                </div>
-
-
-                                <div className="table-responsive">
-
-                                    <table className="table table-hover align-middle mb-0">
-
-                                        <thead className="table-light">
-
-                                            <tr>
-
-                                                <th className="px-4">
-                                                    #
-                                                </th>
-
-                                                <th>
-                                                    Course Code
-                                                </th>
-
-                                                <th>
-                                                    Course Name
-                                                </th>
-
-                                                <th>
-                                                    Category
-                                                </th>
-
-                                                <th>
-                                                    L-T-P
-                                                </th>
-
-                                                <th>
-                                                    Credits
-                                                </th>
-
-                                            </tr>
-
-                                        </thead>
-
-
-                                        <tbody>
-
-                                            {courses.map(
-                                                (course, index) => (
-
-                                                    <tr
-                                                        key={
-                                                            course.id
-                                                        }
-                                                    >
-
-                                                        <td className="px-4">
-                                                            {
-                                                                index + 1
-                                                            }
-                                                        </td>
-
-                                                        <td className="fw-semibold">
-                                                            {
-                                                                course.courseCode
-                                                            }
-                                                        </td>
-
-                                                        <td>
-                                                            {
-                                                                course.courseName
-                                                            }
-                                                        </td>
-
-                                                        <td>
-
-                                                            <span className="badge bg-primary-subtle text-primary">
-
-                                                                {
-                                                                    getCategoryLabel(
-                                                                        course.category
-                                                                    )
-                                                                }
-
-                                                            </span>
-
-                                                        </td>
-
-                                                        <td>
-                                                            {
-                                                                getLTP(
-                                                                    course
-                                                                )
-                                                            }
-                                                        </td>
-
-                                                        <td className="fw-semibold">
-                                                            {
-                                                                course.credits
-                                                            }
-                                                        </td>
-
-                                                    </tr>
-
-                                                )
-                                            )}
-
-                                        </tbody>
-
-                                    </table>
-
-                                </div>
-
-                            </div>
-
-                        )}
-
-
-                        {/* =================================================
-                        ELECTIVES
-                    ================================================= */}
-
-                        {electives.length > 0 && (
-
-                            <div className="card border-0 shadow-sm mb-4">
-
-                                <div className="card-header bg-white py-3">
-
-                                    <h5 className="fw-bold mb-0">
-
-                                        <i className="bi bi-ui-checks-grid me-2 text-primary"></i>
-
-                                        Elective Selection
-
-                                    </h5>
+                                <div>
 
                                     <small className="text-muted">
 
-                                        {canEdit
-                                            ? "Select the subjects for your department."
-                                            : "Elective selections are view only."
-                                        }
+                                        {regulationCode}
+
+                                        {" • "}
+
+                                        {departmentCode}
 
                                     </small>
+
+                                    <h4 className="fw-bold mb-0 mt-1">
+                                        Semester {semester}
+                                    </h4>
 
                                 </div>
 
 
+                                <div className="mt-3 mt-md-0">
+
+                                    {canEdit ? (
+
+                                        <span className="badge bg-success-subtle text-success px-3 py-2">
+
+                                            <i className="bi bi-pencil-square me-1"></i>
+
+                                            Editable
+
+                                        </span>
+
+                                    ) : (
+
+                                        <span className="badge bg-secondary-subtle text-secondary px-3 py-2">
+
+                                            <i className="bi bi-eye me-1"></i>
+
+                                            View Only
+
+                                        </span>
+
+                                    )}
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    {/* SUMMARY */}
+
+                    <div className="row g-3 mb-4">
+
+                        {/* COURSES */}
+
+                        <div className="col-12 col-md-4">
+
+                            <div className="card border-0 shadow-sm h-100">
+
                                 <div className="card-body">
 
-                                    {electives.map(
-                                        group => {
+                                    <div className="d-flex align-items-center">
 
-                                            const groupSubjects =
-                                                subjects[group.id] ||
-                                                [];
+                                        <div
+                                            className="bg-primary-subtle text-primary rounded-3 d-flex align-items-center justify-content-center me-3"
+                                            style={{
+                                                width: "48px",
+                                                height: "48px"
+                                            }}
+                                        >
 
-                                            const loading =
-                                                subjectsLoading[
-                                                group.id
-                                                ];
+                                            <i className="bi bi-journal-bookmark fs-5"></i>
 
-                                            const selectedSubject =
-                                                groupSubjects.find(
-                                                    subject =>
-                                                        subject.id ===
-                                                        selections[group.id]
-                                                );
+                                        </div>
+
+                                        <div>
+
+                                            <small className="text-muted">
+                                                Courses
+                                            </small>
+
+                                            <h4 className="fw-bold mb-0">
+                                                {courses.length}
+                                            </h4>
+
+                                        </div>
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+                        </div>
 
 
-                                            return (
+                        {/* CREDITS */}
 
-                                                <div
+                        <div className="col-12 col-md-4">
+
+                            <div className="card border-0 shadow-sm h-100">
+
+                                <div className="card-body">
+
+                                    <div className="d-flex align-items-center">
+
+                                        <div
+                                            className="bg-success-subtle text-success rounded-3 d-flex align-items-center justify-content-center me-3"
+                                            style={{
+                                                width: "48px",
+                                                height: "48px"
+                                            }}
+                                        >
+
+                                            <i className="bi bi-award fs-5"></i>
+
+                                        </div>
+
+
+                                        <div>
+
+                                            <small className="text-muted">
+                                                Total Credits
+                                            </small>
+
+                                            <h4 className="fw-bold mb-0">
+                                                {totalCredits}
+                                            </h4>
+
+                                            <small className="text-muted">
+
+                                                Courses: {
+                                                    totalCourseCredits
+                                                }
+
+                                                {" + "}
+
+                                                Electives: {
+                                                    totalElectiveCredits
+                                                }
+
+                                            </small>
+
+                                        </div>
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        {/* L-T-P */}
+
+                        <div className="col-12 col-md-4">
+
+                            <div className="card border-0 shadow-sm h-100">
+
+                                <div className="card-body">
+
+                                    <div className="d-flex align-items-center">
+
+                                        <div
+                                            className="bg-warning-subtle text-warning rounded-3 d-flex align-items-center justify-content-center me-3"
+                                            style={{
+                                                width: "48px",
+                                                height: "48px"
+                                            }}
+                                        >
+
+                                            <i className="bi bi-grid-3x3-gap fs-5"></i>
+
+                                        </div>
+
+
+                                        <div>
+
+                                            <small className="text-muted">
+                                                Total L-T-P
+                                            </small>
+
+                                            <h4 className="fw-bold mb-0">
+                                                {totalLTP}
+                                            </h4>
+
+                                        </div>
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    {/* =================================================
+                        NORMAL COURSES
+                    ================================================= */}
+
+                    {courses.length > 0 && (
+
+                        <div className="card border-0 shadow-sm mb-4">
+
+                            <div className="card-header bg-white py-3">
+
+                                <h5 className="fw-bold mb-0">
+
+                                    <i className="bi bi-book me-2 text-primary"></i>
+
+                                    Courses
+
+                                </h5>
+
+                            </div>
+
+
+                            <div className="table-responsive">
+
+                                <table className="table table-hover align-middle mb-0">
+
+                                    <thead className="table-light">
+
+                                        <tr>
+
+                                            <th className="px-4">
+                                                #
+                                            </th>
+
+                                            <th>
+                                                Course Code
+                                            </th>
+
+                                            <th>
+                                                Course Name
+                                            </th>
+
+                                            <th>
+                                                Category
+                                            </th>
+
+                                            <th>
+                                                L-T-P
+                                            </th>
+
+                                            <th>
+                                                Credits
+                                            </th>
+
+                                        </tr>
+
+                                    </thead>
+
+
+                                    <tbody>
+
+                                        {courses.map(
+                                            (course, index) => (
+
+                                                <tr
                                                     key={
-                                                        group.id
+                                                        course.id
                                                     }
-                                                    className="border rounded-3 p-3 mb-3"
                                                 >
 
-                                                    {/* GROUP HEADER */}
+                                                    <td className="px-4">
+                                                        {index + 1}
+                                                    </td>
 
-                                                    <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-3">
+                                                    <td className="fw-semibold">
+                                                        {
+                                                            course.courseCode
+                                                        }
+                                                    </td>
 
-                                                        <div>
+                                                    <td>
+                                                        {
+                                                            course.courseName
+                                                        }
+                                                    </td>
 
-                                                            <h6 className="fw-bold mb-1">
+                                                    <td>
 
-                                                                {
-                                                                    group.name
-                                                                }
+                                                        <span className="badge bg-primary-subtle text-primary">
 
-                                                            </h6>
+                                                            {
+                                                                getCategoryLabel(
+                                                                    course.category
+                                                                )
+                                                            }
 
-                                                            <span className="badge bg-light text-dark border">
+                                                        </span>
 
-                                                                {
-                                                                    group.electiveType
-                                                                }
+                                                    </td>
 
-                                                            </span>
+                                                    <td>
+                                                        {
+                                                            getLTP(
+                                                                course
+                                                            )
+                                                        }
+                                                    </td>
 
-                                                        </div>
+                                                    <td className="fw-semibold">
+                                                        {
+                                                            course.credits
+                                                        }
+                                                    </td>
+
+                                                </tr>
+
+                                            )
+                                        )}
+
+                                    </tbody>
+
+                                </table>
+
+                            </div>
+
+                        </div>
+
+                    )}
 
 
-                                                        {group.selectedSubject && (
+                    {/* =================================================
+                        ELECTIVES
+                    ================================================= */}
 
-                                                            <div className="mt-2 mt-md-0">
+                    {electives.length > 0 && (
 
-                                                                <span className="badge bg-success-subtle text-success">
+                        <div className="card border-0 shadow-sm mb-4">
 
-                                                                    <i className="bi bi-check-circle me-1"></i>
+                            <div className="card-header bg-white py-3">
 
-                                                                    Currently Selected
+                                <h5 className="fw-bold mb-0">
 
-                                                                </span>
+                                    <i className="bi bi-ui-checks-grid me-2 text-primary"></i>
 
-                                                            </div>
+                                    Elective Selection
 
-                                                        )}
+                                </h5>
+
+                                <small className="text-muted">
+
+                                    {canEdit
+                                        ? "Select the subjects for your department."
+                                        : "Elective selections are view only."
+                                    }
+
+                                </small>
+
+                            </div>
+
+
+                            <div className="card-body">
+
+                                {electives.map(
+                                    group => {
+
+                                        const groupSubjects =
+                                            subjects[group.id] ||
+                                            [];
+
+                                        const loading =
+                                            subjectsLoading[
+                                                group.id
+                                            ];
+
+
+                                        const selectedIds =
+                                            selections[
+                                                group.id
+                                            ] || [];
+
+
+                                        const selectedSubjects =
+                                            groupSubjects.filter(
+                                                subject =>
+                                                    selectedIds.includes(
+                                                        Number(subject.id)
+                                                    )
+                                            );
+
+
+                                        return (
+
+                                            <div
+                                                key={
+                                                    group.id
+                                                }
+                                                className="border rounded-3 p-3 mb-3"
+                                            >
+
+                                                {/* GROUP HEADER */}
+
+                                                <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-3">
+
+                                                    <div>
+
+                                                        <h6 className="fw-bold mb-1">
+                                                            {
+                                                                group.name
+                                                            }
+                                                        </h6>
+
+                                                        <span className="badge bg-light text-dark border">
+                                                            {
+                                                                group.electiveType
+                                                            }
+                                                        </span>
 
                                                     </div>
 
 
-                                                    {/* CURRENT SELECTION */}
+                                                    {selectedSubjects.length > 0 && (
 
-                                                    {group.selectedSubject && (
+                                                        <div className="mt-2 mt-md-0">
 
-                                                        <div className="alert alert-success py-2">
+                                                            <span className="badge bg-success-subtle text-success">
 
-                                                            <small>
-
-                                                                <strong>
-                                                                    Selected:
-                                                                </strong>
-
-                                                                {" "}
+                                                                <i className="bi bi-check-circle me-1"></i>
 
                                                                 {
-                                                                    group
-                                                                        .selectedSubject
-                                                                        .courseCode
+                                                                    selectedSubjects.length
                                                                 }
 
-                                                                {" - "}
+                                                                {" Selected"}
 
-                                                                {
-                                                                    group
-                                                                        .selectedSubject
-                                                                        .courseName
-                                                                }
-
-                                                                {" • "}
-
-                                                                {
-                                                                    group
-                                                                        .selectedSubject
-                                                                        .credits
-                                                                }
-
-                                                                {" Credits"}
-
-                                                            </small>
+                                                            </span>
 
                                                         </div>
 
                                                     )}
 
+                                                </div>
 
-                                                    {/* SUBJECT SELECT */}
 
-                                                    {loading ? (
+                                                {/* CURRENT SELECTIONS */}
 
-                                                        <div className="text-muted">
+                                                {selectedSubjects.length > 0 && (
 
-                                                            <span
-                                                                className="spinner-border spinner-border-sm me-2"
-                                                            ></span>
+                                                    <div className="mb-3">
 
-                                                            Loading available subjects...
+                                                        <small className="text-muted d-block mb-2">
+                                                            Selected Subjects
+                                                        </small>
+
+
+                                                        <div className="d-flex flex-column gap-2">
+
+                                                            {selectedSubjects.map(
+                                                                subject => (
+
+                                                                    <div
+                                                                        key={
+                                                                            subject.id
+                                                                        }
+                                                                        className="alert alert-success py-2 px-3 mb-0 d-flex justify-content-between align-items-center"
+                                                                    >
+
+                                                                        <small>
+
+                                                                            <strong>
+                                                                                {
+                                                                                    subject.courseCode
+                                                                                }
+                                                                            </strong>
+
+                                                                            {" - "}
+
+                                                                            {
+                                                                                subject.courseName
+                                                                            }
+
+                                                                            {" • "}
+
+                                                                            {
+                                                                                subject.credits
+                                                                            }
+
+                                                                            {" Credits"}
+
+                                                                        </small>
+
+
+                                                                        {canEdit && (
+
+                                                                            <button
+                                                                                type="button"
+                                                                                className="btn btn-sm btn-outline-danger ms-2"
+                                                                                onClick={() =>
+                                                                                    removeSelection(
+                                                                                        group.id,
+                                                                                        subject.id
+                                                                                    )
+                                                                                }
+                                                                            >
+
+                                                                                <i className="bi bi-x-lg"></i>
+
+                                                                            </button>
+
+                                                                        )}
+
+                                                                    </div>
+
+                                                                )
+                                                            )}
 
                                                         </div>
 
-                                                    ) : (
+                                                    </div>
 
-                                                        <>
+                                                )}
 
-                                                            <label className="form-label fw-semibold">
 
-                                                                {canEdit
-                                                                    ? "Select Subject"
-                                                                    : "Selected / Available Subjects"
-                                                                }
+                                                {/* SUBJECT SELECT */}
 
-                                                            </label>
+                                                {loading ? (
 
+                                                    <div className="text-muted">
+
+                                                        <span
+                                                            className="spinner-border spinner-border-sm me-2"
+                                                        ></span>
+
+                                                        Loading available subjects...
+
+                                                    </div>
+
+                                                ) : (
+
+                                                    <>
+
+                                                        <label className="form-label fw-semibold">
+
+                                                            {canEdit
+                                                                ? "Select Subject(s)"
+                                                                : "Available Subjects"
+                                                            }
+
+                                                        </label>
+
+
+                                                        {canEdit ? (
 
                                                             <select
                                                                 className="form-select"
+                                                                multiple
+                                                                size={
+                                                                    Math.min(
+                                                                        Math.max(
+                                                                            groupSubjects.length,
+                                                                            3
+                                                                        ),
+                                                                        8
+                                                                    )
+                                                                }
                                                                 value={
-                                                                    selections[
-                                                                    group.id
-                                                                    ] || ""
+                                                                    selectedIds.map(
+                                                                        String
+                                                                    )
                                                                 }
                                                                 onChange={
-                                                                    (event) =>
-                                                                        handleSelectionChange(
-                                                                            group.id,
-                                                                            event.target.value
-                                                                        )
-                                                                }
-                                                                disabled={
-                                                                    !canEdit
+                                                                    event => {
+
+                                                                        const selectedValues =
+                                                                            Array.from(
+                                                                                event.target.selectedOptions
+                                                                            ).map(
+                                                                                option =>
+                                                                                    Number(
+                                                                                        option.value
+                                                                                    )
+                                                                            );
+
+
+                                                                        setSelections(
+                                                                            previous => ({
+                                                                                ...previous,
+                                                                                [group.id]:
+                                                                                    selectedValues
+                                                                            })
+                                                                        );
+
+                                                                    }
                                                                 }
                                                             >
-
-                                                                <option value="">
-                                                                    Select Subject
-                                                                </option>
-
 
                                                                 {groupSubjects.map(
                                                                     subject => (
@@ -1721,95 +1829,196 @@ function FacultyCurriculum() {
 
                                                             </select>
 
+                                                        ) : (
 
-                                                            {!canEdit && (
+                                                            <div className="list-group">
 
-                                                                <small className="text-muted d-block mt-2">
+                                                                {groupSubjects.map(
+                                                                    subject => {
 
-                                                                    <i className="bi bi-lock me-1"></i>
-
-                                                                    Only the HOD/DEAN
-                                                                    of this department
-                                                                    can modify this
-                                                                    selection.
-
-                                                                </small>
-
-                                                            )}
-
-                                                        </>
-
-                                                    )}
-
-                                                </div>
-
-                                            );
-
-                                        }
-                                    )}
-
-                                </div>
+                                                                        const isSelected =
+                                                                            selectedIds.includes(
+                                                                                Number(
+                                                                                    subject.id
+                                                                                )
+                                                                            );
 
 
-                                {/* =================================================
-                                SUBMIT
-                            ================================================= */}
+                                                                        return (
 
-                                {canEdit && (
+                                                                            <div
+                                                                                key={
+                                                                                    subject.id
+                                                                                }
+                                                                                className={
+                                                                                    `list-group-item d-flex justify-content-between align-items-center ${
+                                                                                        isSelected
+                                                                                            ? "list-group-item-success"
+                                                                                            : ""
+                                                                                    }`
+                                                                                }
+                                                                            >
 
-                                    <div className="card-footer bg-white border-top p-3">
+                                                                                <div>
 
-                                        <div className="d-flex justify-content-end">
+                                                                                    <strong>
+                                                                                        {
+                                                                                            subject.courseCode
+                                                                                        }
+                                                                                    </strong>
 
-                                            <button
-                                                className="btn btn-primary px-4"
-                                                onClick={
-                                                    handleSubmit
-                                                }
-                                                disabled={
-                                                    saving
-                                                }
-                                            >
+                                                                                    {" - "}
 
-                                                {saving ? (
+                                                                                    {
+                                                                                        subject.courseName
+                                                                                    }
 
-                                                    <>
+                                                                                </div>
 
-                                                        <span
-                                                            className="spinner-border spinner-border-sm me-2"
-                                                        ></span>
 
-                                                        Saving...
+                                                                                <div className="d-flex align-items-center gap-2">
 
-                                                    </>
+                                                                                    <span className="badge bg-light text-dark border">
 
-                                                ) : (
+                                                                                        {
+                                                                                            subject.credits
+                                                                                        }
 
-                                                    <>
+                                                                                        {" Credits"}
 
-                                                        <i className="bi bi-check-lg me-2"></i>
+                                                                                    </span>
 
-                                                        Submit Selections
+
+                                                                                    {isSelected && (
+
+                                                                                        <i className="bi bi-check-circle-fill text-success"></i>
+
+                                                                                    )}
+
+                                                                                </div>
+
+                                                                            </div>
+
+                                                                        );
+
+                                                                    }
+                                                                )}
+
+                                                            </div>
+
+                                                        )}
+
+
+                                                        {canEdit && (
+
+                                                            <small className="text-muted d-block mt-2">
+
+                                                                <i className="bi bi-info-circle me-1"></i>
+
+                                                                Hold
+                                                                {" "}
+                                                                <strong>Ctrl</strong>
+                                                                {" "}
+                                                                (Windows)
+                                                                or
+                                                                {" "}
+                                                                <strong>Command</strong>
+                                                                {" "}
+                                                                (Mac)
+                                                                to select multiple subjects.
+
+                                                            </small>
+
+                                                        )}
+
+
+                                                        {!canEdit && (
+
+                                                            <small className="text-muted d-block mt-2">
+
+                                                                <i className="bi bi-lock me-1"></i>
+
+                                                                Only the HOD/DEAN
+                                                                of this department
+                                                                can modify selections.
+
+                                                            </small>
+
+                                                        )}
 
                                                     </>
 
                                                 )}
 
-                                            </button>
+                                            </div>
 
-                                        </div>
+                                        );
 
-                                    </div>
-
+                                    }
                                 )}
 
                             </div>
 
-                        )}
 
-                    </>
+                            {/* =================================================
+                                SUBMIT
+                            ================================================= */}
 
-                )}
+                            {canEdit && (
+
+                                <div className="card-footer bg-white border-top p-3">
+
+                                    <div className="d-flex justify-content-end">
+
+                                        <button
+                                            className="btn btn-primary px-4"
+                                            onClick={
+                                                handleSubmit
+                                            }
+                                            disabled={
+                                                saving
+                                            }
+                                        >
+
+                                            {saving ? (
+
+                                                <>
+
+                                                    <span
+                                                        className="spinner-border spinner-border-sm me-2"
+                                                    ></span>
+
+                                                    Saving...
+
+                                                </>
+
+                                            ) : (
+
+                                                <>
+
+                                                    <i className="bi bi-check-lg me-2"></i>
+
+                                                    Save Selections
+
+                                                </>
+
+                                            )}
+
+                                        </button>
+
+                                    </div>
+
+                                </div>
+
+                            )}
+
+                        </div>
+
+                    )}
+
+                </>
+
+            )}
 
 
             {/* =================================================
