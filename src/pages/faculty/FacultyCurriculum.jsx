@@ -42,6 +42,12 @@ function FacultyCurriculum() {
     const [courses, setCourses] = useState([]);
     const [electives, setElectives] = useState([]);
 
+    // =====================================================
+    // ALL SEMESTERS
+    // =====================================================
+
+    const [allCurricula, setAllCurricula] = useState([]);
+
 
     // =====================================================
     // ELECTIVE SUBJECTS
@@ -206,6 +212,61 @@ function FacultyCurriculum() {
 
             setCurriculumLoading(true);
 
+            // =================================================
+            // LOAD COMPLETE CURRICULUM
+            // =================================================
+
+            if (semester === "ALL") {
+
+                const semesterNumbers =
+                    [1, 2, 3, 4, 5, 6, 7, 8];
+
+                const responses =
+                    await Promise.all(
+                        semesterNumbers.map(async sem => {
+                            try {
+                                return await getSemesterCurriculum(
+                                    regulationCode,
+                                    departmentCode,
+                                    sem
+                                );
+                            } catch (error) {
+                                console.error(
+                                    `Failed to load Semester ${sem}:`,
+                                    error
+                                );
+
+                                // Keep the semester in the All view even
+                                // when that particular semester has no data.
+                                return { data: { courses: [], electives: [] } };
+                            }
+                        })
+                    );
+
+                const allData =
+                    responses.map((response, index) => ({
+                        semester: semesterNumbers[index],
+                        courses: response.data?.courses || [],
+                        electives: response.data?.electives || []
+                    }));
+
+                setAllCurricula(allData);
+
+                // All view is read-only.
+                setCourses([]);
+                setElectives([]);
+                setSubjects({});
+                setSelections({});
+
+                return;
+            }
+
+            // =================================================
+            // LOAD SINGLE SEMESTER
+            // =================================================
+
+            setAllCurricula([]);
+
             const response =
                 await getSemesterCurriculum(
                     regulationCode,
@@ -224,9 +285,6 @@ function FacultyCurriculum() {
 
             const groups =
                 curriculum?.electives || [];
-            
-                console.log("ELECTIVE GROUPS FROM BACKEND:", groups);
-
 
 
             setElectives(groups);
@@ -283,6 +341,7 @@ function FacultyCurriculum() {
 
             setCourses([]);
             setElectives([]);
+            setAllCurricula([]);
             setSubjects({});
             setSelections({});
 
@@ -291,7 +350,6 @@ function FacultyCurriculum() {
             setCurriculumLoading(false);
         }
     };
-    
 
 
     // =====================================================
@@ -402,6 +460,7 @@ function FacultyCurriculum() {
 
         setCourses([]);
         setElectives([]);
+        setAllCurricula([]);
         setSubjects({});
         setSelections({});
     };
@@ -492,15 +551,8 @@ function FacultyCurriculum() {
     // =====================================================
     // SUBMIT ELECTIVES
     // =====================================================
-    // =====================================================
-    // SUBMIT ELECTIVES
-    // =====================================================
 
     const handleSubmit = async () => {
-
-        // -------------------------------------------------
-        // CHECK EDIT PERMISSION
-        // -------------------------------------------------
 
         if (!canEdit) {
 
@@ -511,9 +563,6 @@ function FacultyCurriculum() {
             return;
         }
 
-        // -------------------------------------------------
-        // CHECK REQUIRED FILTERS
-        // -------------------------------------------------
 
         if (
             !regulationCode ||
@@ -528,31 +577,31 @@ function FacultyCurriculum() {
             return;
         }
 
-        // -------------------------------------------------
-        // BUILD SELECTION LIST
-        // -------------------------------------------------
+
+        // =================================================
+        // BUILD SELECTION REQUEST
+        // =================================================
 
         const selectionList = [];
 
-        electives.forEach((group) => {
+
+        electives.forEach(group => {
 
             const groupSelections =
                 selections[group.id] || [];
 
-            groupSelections.forEach((subjectId) => {
+
+            groupSelections.forEach(subjectId => {
 
                 selectionList.push({
-                    electiveGroupId: Number(group.id),
-                    subjectId: Number(subjectId)
+                    electiveGroupId: group.id,
+                    subjectId: subjectId
                 });
 
             });
 
         });
 
-        // -------------------------------------------------
-        // CHECK SELECTION
-        // -------------------------------------------------
 
         if (selectionList.length === 0) {
 
@@ -563,26 +612,11 @@ function FacultyCurriculum() {
             return;
         }
 
-        // -------------------------------------------------
-        // REQUEST PAYLOAD
-        // -------------------------------------------------
-
-        const payload = {
-            selections: selectionList
-        };
-
-        console.log(
-            "Sending elective payload:",
-            payload
-        );
-
-        // -------------------------------------------------
-        // SAVE
-        // -------------------------------------------------
 
         try {
 
             setSaving(true);
+
 
             const response =
                 await selectElectives(
@@ -592,17 +626,18 @@ function FacultyCurriculum() {
                     selectionList
                 );
 
+
             toast.success(
                 response.data?.message ||
                 response.message ||
                 "Elective selections updated successfully"
             );
 
-            // -------------------------------------------------
-            // REFRESH CURRICULUM
-            // -------------------------------------------------
+
+            // Refresh curriculum
 
             await handleLoadCurriculum();
+
 
         } catch (error) {
 
@@ -611,6 +646,7 @@ function FacultyCurriculum() {
                 error
             );
 
+
             toast.error(
                 error.response
                     ?.data
@@ -618,11 +654,13 @@ function FacultyCurriculum() {
                 "Failed to update elective selections"
             );
 
+
         } finally {
 
             setSaving(false);
         }
     };
+
 
     // =====================================================
     // SELECTED ELECTIVE SUBJECTS
@@ -1119,6 +1157,10 @@ function FacultyCurriculum() {
                                     Select
                                 </option>
 
+                                <option value="ALL">
+                                    All
+                                </option>
+
                                 {[1, 2, 3, 4, 5, 6, 7, 8]
                                     .map(sem => (
 
@@ -1177,871 +1219,1220 @@ function FacultyCurriculum() {
 
 
             {/* =================================================
+                ALL SEMESTERS VIEW
+            ================================================= */}
+
+            {semester === "ALL" &&
+                allCurricula.length > 0 && (
+
+                    <div className="mt-4">
+
+                        <div className="alert alert-info border-0 shadow-sm mb-4">
+
+                            <i className="bi bi-info-circle me-2"></i>
+
+                            Showing the complete curriculum for
+                            <strong className="mx-1">
+                                {departmentCode}
+                            </strong>
+                            under
+                            <strong className="mx-1">
+                                {regulationCode}
+                            </strong>
+                            .
+                            This view is read-only. Select a specific
+                            semester to manage elective selections.
+
+                        </div>
+
+                        {allCurricula.map(curriculum => {
+
+                            const semesterCourses =
+                                curriculum.courses || [];
+
+                            const semesterElectives =
+                                curriculum.electives || [];
+
+                            const courseCredits =
+                                semesterCourses.reduce(
+                                    (total, course) =>
+                                        total +
+                                        (Number(course.credits) || 0),
+                                    0
+                                );
+
+                            const electiveCredits =
+                                semesterElectives.reduce(
+                                    (total, group) => {
+
+                                        const selectedSubjects =
+                                            group.selectedSubjects || [];
+
+                                        if (selectedSubjects.length === 0) {
+                                            return total;
+                                        }
+
+                                        return total +
+                                            (Number(group.credits) || 0);
+                                    },
+                                    0
+                                );
+
+                            const totalSemesterCredits =
+                                courseCredits + electiveCredits;
+
+                            const lecture =
+                                semesterCourses.reduce(
+                                    (total, course) =>
+                                        total +
+                                        (Number(course.lecture) || 0),
+                                    0
+                                ) +
+                                semesterElectives.reduce(
+                                    (total, group) =>
+                                        (group.selectedSubjects || []).length > 0
+                                            ? total + (Number(group.lecture) || 0)
+                                            : total,
+                                    0
+                                );
+
+                            const tutorial =
+                                semesterCourses.reduce(
+                                    (total, course) =>
+                                        total +
+                                        (Number(course.tutorial) || 0),
+                                    0
+                                ) +
+                                semesterElectives.reduce(
+                                    (total, group) =>
+                                        (group.selectedSubjects || []).length > 0
+                                            ? total + (Number(group.tutorial) || 0)
+                                            : total,
+                                    0
+                                );
+
+                            const practical =
+                                semesterCourses.reduce(
+                                    (total, course) =>
+                                        total +
+                                        (Number(course.practical) || 0),
+                                    0
+                                ) +
+                                semesterElectives.reduce(
+                                    (total, group) =>
+                                        (group.selectedSubjects || []).length > 0
+                                            ? total + (Number(group.practical) || 0)
+                                            : total,
+                                    0
+                                );
+
+                            return (
+
+                                <div
+                                    key={curriculum.semester}
+                                    className="mb-5"
+                                >
+
+                                    {/* SEMESTER HEADER */}
+
+                                    <div className="card border-0 shadow-sm mb-3">
+
+                                        <div className="card-body p-4">
+
+                                            <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center">
+
+                                                <div>
+
+                                                    <small className="text-muted">
+                                                        {regulationCode}
+                                                        {" • "}
+                                                        {departmentCode}
+                                                    </small>
+
+                                                    <h4 className="fw-bold mb-0 mt-1">
+                                                        Semester {curriculum.semester}
+                                                    </h4>
+
+                                                </div>
+
+                                                <div className="mt-3 mt-md-0 d-flex flex-wrap gap-2">
+
+                                                    <span className="badge bg-primary-subtle text-primary px-3 py-2">
+                                                        {semesterCourses.length} Courses
+                                                    </span>
+
+                                                    <span className="badge bg-success-subtle text-success px-3 py-2">
+                                                        {semesterElectives.length} Elective Groups
+                                                    </span>
+
+                                                    <span className="badge bg-warning-subtle text-warning px-3 py-2">
+                                                        {totalSemesterCredits} Credits
+                                                    </span>
+
+                                                    <span className="badge bg-secondary-subtle text-secondary px-3 py-2">
+                                                        L-T-P: {lecture}-{tutorial}-{practical}
+                                                    </span>
+
+                                                </div>
+
+                                            </div>
+
+                                        </div>
+
+                                    </div>
+
+                                    {/* COURSES */}
+
+                                    {semesterCourses.length > 0 && (
+
+                                        <div className="card border-0 shadow-sm mb-3">
+
+                                            <div className="card-header bg-white py-3">
+
+                                                <h5 className="fw-bold mb-0">
+                                                    <i className="bi bi-book me-2 text-primary"></i>
+                                                    Courses
+                                                </h5>
+
+                                            </div>
+
+                                            <div className="table-responsive">
+
+                                                <table className="table table-hover align-middle mb-0">
+
+                                                    <thead className="table-light">
+                                                        <tr>
+                                                            <th className="px-4">#</th>
+                                                            <th>Course Code</th>
+                                                            <th>Course Name</th>
+                                                            <th>Category</th>
+                                                            <th>L-T-P</th>
+                                                            <th>Credits</th>
+                                                        </tr>
+                                                    </thead>
+
+                                                    <tbody>
+                                                        {semesterCourses.map((course, index) => (
+                                                            <tr key={course.id || `${curriculum.semester}-${index}`}>
+                                                                <td className="px-4">{index + 1}</td>
+                                                                <td className="fw-semibold">
+                                                                    {course.courseCode || "—"}
+                                                                </td>
+                                                                <td>{course.courseName}</td>
+                                                                <td>
+                                                                    <span className="badge bg-primary-subtle text-primary">
+                                                                        {getCategoryLabel(course.category)}
+                                                                    </span>
+                                                                </td>
+                                                                <td>{getLTP(course)}</td>
+                                                                <td className="fw-semibold">
+                                                                    {course.credits ?? 0}
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+
+                                                </table>
+
+                                            </div>
+
+                                        </div>
+
+                                    )}
+
+                                    {/* ELECTIVE GROUPS */}
+
+                                    {semesterElectives.length > 0 && (
+
+                                        <div className="card border-0 shadow-sm mb-3">
+
+                                            <div className="card-header bg-white py-3">
+
+                                                <h5 className="fw-bold mb-0">
+                                                    <i className="bi bi-list-check me-2 text-success"></i>
+                                                    Elective Groups
+                                                </h5>
+
+                                            </div>
+
+                                            <div className="card-body">
+
+                                                <div className="row g-3">
+
+                                                    {semesterElectives.map(group => {
+
+                                                        const selectedSubjects =
+                                                            group.selectedSubjects || [];
+
+                                                        return (
+
+                                                            <div
+                                                                key={group.id}
+                                                                className="col-12 col-lg-6"
+                                                            >
+
+                                                                <div className="border rounded-3 p-3 h-100">
+
+                                                                    <div className="d-flex justify-content-between align-items-start mb-2">
+
+                                                                        <div>
+                                                                            <h6 className="fw-bold mb-1">
+                                                                                {group.name}
+                                                                            </h6>
+
+                                                                            <small className="text-muted">
+                                                                                {group.electiveType}
+                                                                            </small>
+                                                                        </div>
+
+                                                                        <span className="badge bg-warning-subtle text-warning">
+                                                                            {group.credits ?? 0} Credits
+                                                                        </span>
+
+                                                                    </div>
+
+                                                                    <div className="small text-muted mb-3">
+                                                                        L-T-P: {group.lecture ?? 0}-{group.tutorial ?? 0}-{group.practical ?? 0}
+                                                                    </div>
+
+                                                                    {selectedSubjects.length > 0 ? (
+
+                                                                        <>
+                                                                            <small className="fw-semibold d-block mb-2">
+                                                                                Selected Subjects
+                                                                            </small>
+
+                                                                            <div className="d-flex flex-column gap-2">
+                                                                                {selectedSubjects.map(subject => (
+                                                                                    <div
+                                                                                        key={subject.id}
+                                                                                        className="alert alert-success py-2 px-3 mb-0"
+                                                                                    >
+                                                                                        <strong>
+                                                                                            {subject.courseCode || "—"}
+                                                                                        </strong>
+                                                                                        {" - "}
+                                                                                        {subject.courseName}
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        </>
+
+                                                                    ) : (
+
+                                                                        <div className="text-muted small">
+                                                                            <i className="bi bi-dash-circle me-1"></i>
+                                                                            No elective subject selected yet.
+                                                                        </div>
+
+                                                                    )}
+
+                                                                </div>
+
+                                                            </div>
+
+                                                        );
+                                                    })}
+
+                                                </div>
+
+                                            </div>
+
+                                        </div>
+
+                                    )}
+
+                                    {/* EMPTY SEMESTER */}
+
+                                    {semesterCourses.length === 0 &&
+                                        semesterElectives.length === 0 && (
+                                            <div className="card border-0 shadow-sm">
+                                                <div className="card-body text-center py-4">
+                                                    <i className="bi bi-journal-x text-muted fs-3"></i>
+                                                    <p className="text-muted mb-0 mt-2">
+                                                        No curriculum found for Semester {curriculum.semester}.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                </div>
+
+                            );
+                        })}
+
+                    </div>
+
+                )}
+
+
+            {/* =================================================
                 CURRICULUM CONTENT
             ================================================= */}
 
             {(courses.length > 0 ||
                 electives.length > 0) && (
 
-                    <>
+                <>
 
-                        {/* VIEW ONLY NOTICE */}
+                    {/* VIEW ONLY NOTICE */}
 
-                        {!canEdit && (
+                    {!canEdit && (
 
-                            <div className="alert alert-info border-0 shadow-sm">
+                        <div className="alert alert-info border-0 shadow-sm">
 
-                                <i className="bi bi-info-circle me-2"></i>
+                            <i className="bi bi-info-circle me-2"></i>
 
-                                You are viewing the{" "}
+                            You are viewing the{" "}
 
-                                <strong>
-                                    {departmentCode}
-                                </strong>
+                            <strong>
+                                {departmentCode}
+                            </strong>
 
-                                {" "}department curriculum.
+                            {" "}department curriculum.
 
-                                You can view the curriculum,
-                                but only the HOD/DEAN of that
-                                department can modify elective
-                                selections.
-
-                            </div>
-
-                        )}
-
-
-                        {/* SEMESTER HEADER */}
-
-                        <div className="card border-0 shadow-sm mb-4">
-
-                            <div className="card-body p-4">
-
-                                <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center">
-
-                                    <div>
-
-                                        <small className="text-muted">
-
-                                            {regulationCode}
-
-                                            {" • "}
-
-                                            {departmentCode}
-
-                                        </small>
-
-                                        <h4 className="fw-bold mb-0 mt-1">
-                                            Semester {semester}
-                                        </h4>
-
-                                    </div>
-
-
-                                    <div className="mt-3 mt-md-0">
-
-                                        {canEdit ? (
-
-                                            <span className="badge bg-success-subtle text-success px-3 py-2">
-
-                                                <i className="bi bi-pencil-square me-1"></i>
-
-                                                Editable
-
-                                            </span>
-
-                                        ) : (
-
-                                            <span className="badge bg-secondary-subtle text-secondary px-3 py-2">
-
-                                                <i className="bi bi-eye me-1"></i>
-
-                                                View Only
-
-                                            </span>
-
-                                        )}
-
-                                    </div>
-
-                                </div>
-
-                            </div>
+                            You can view the curriculum,
+                            but only the HOD/DEAN of that
+                            department can modify elective
+                            selections.
 
                         </div>
 
+                    )}
 
-                        {/* SUMMARY */}
 
-                        <div className="row g-3 mb-4">
+                    {/* SEMESTER HEADER */}
 
-                            {/* COURSES */}
+                    <div className="card border-0 shadow-sm mb-4">
 
-                            <div className="col-12 col-md-4">
+                        <div className="card-body p-4">
 
-                                <div className="card border-0 shadow-sm h-100">
+                            <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center">
 
-                                    <div className="card-body">
-
-                                        <div className="d-flex align-items-center">
-
-                                            <div
-                                                className="bg-primary-subtle text-primary rounded-3 d-flex align-items-center justify-content-center me-3"
-                                                style={{
-                                                    width: "48px",
-                                                    height: "48px"
-                                                }}
-                                            >
-
-                                                <i className="bi bi-journal-bookmark fs-5"></i>
-
-                                            </div>
-
-                                            <div>
-
-                                                <small className="text-muted">
-                                                    Courses
-                                                </small>
-
-                                                <h4 className="fw-bold mb-0">
-                                                    {courses.length}
-                                                </h4>
-
-                                            </div>
-
-                                        </div>
-
-                                    </div>
-
-                                </div>
-
-                            </div>
-
-
-                            {/* CREDITS */}
-
-                            <div className="col-12 col-md-4">
-
-                                <div className="card border-0 shadow-sm h-100">
-
-                                    <div className="card-body">
-
-                                        <div className="d-flex align-items-center">
-
-                                            <div
-                                                className="bg-success-subtle text-success rounded-3 d-flex align-items-center justify-content-center me-3"
-                                                style={{
-                                                    width: "48px",
-                                                    height: "48px"
-                                                }}
-                                            >
-
-                                                <i className="bi bi-award fs-5"></i>
-
-                                            </div>
-
-
-                                            <div>
-
-                                                <small className="text-muted">
-                                                    Total Credits
-                                                </small>
-
-                                                <h4 className="fw-bold mb-0">
-                                                    {totalCredits}
-                                                </h4>
-
-                                                <small className="text-muted">
-
-                                                    Courses: {
-                                                        totalCourseCredits
-                                                    }
-
-                                                    {" + "}
-
-                                                    Electives: {
-                                                        totalElectiveCredits
-                                                    }
-
-                                                </small>
-
-                                            </div>
-
-                                        </div>
-
-                                    </div>
-
-                                </div>
-
-                            </div>
-
-
-                            {/* L-T-P */}
-
-                            <div className="col-12 col-md-4">
-
-                                <div className="card border-0 shadow-sm h-100">
-
-                                    <div className="card-body">
-
-                                        <div className="d-flex align-items-center">
-
-                                            <div
-                                                className="bg-warning-subtle text-warning rounded-3 d-flex align-items-center justify-content-center me-3"
-                                                style={{
-                                                    width: "48px",
-                                                    height: "48px"
-                                                }}
-                                            >
-
-                                                <i className="bi bi-grid-3x3-gap fs-5"></i>
-
-                                            </div>
-
-
-                                            <div>
-
-                                                <small className="text-muted">
-                                                    Total L-T-P
-                                                </small>
-
-                                                <h4 className="fw-bold mb-0">
-                                                    {totalLTP}
-                                                </h4>
-
-                                            </div>
-
-                                        </div>
-
-                                    </div>
-
-                                </div>
-
-                            </div>
-
-                        </div>
-
-
-                        {/* =================================================
-                        NORMAL COURSES
-                    ================================================= */}
-
-                        {courses.length > 0 && (
-
-                            <div className="card border-0 shadow-sm mb-4">
-
-                                <div className="card-header bg-white py-3">
-
-                                    <h5 className="fw-bold mb-0">
-
-                                        <i className="bi bi-book me-2 text-primary"></i>
-
-                                        Courses
-
-                                    </h5>
-
-                                </div>
-
-
-                                <div className="table-responsive">
-
-                                    <table className="table table-hover align-middle mb-0">
-
-                                        <thead className="table-light">
-
-                                            <tr>
-
-                                                <th className="px-4">
-                                                    #
-                                                </th>
-
-                                                <th>
-                                                    Course Code
-                                                </th>
-
-                                                <th>
-                                                    Course Name
-                                                </th>
-
-                                                <th>
-                                                    Category
-                                                </th>
-
-                                                <th>
-                                                    L-T-P
-                                                </th>
-
-                                                <th>
-                                                    Credits
-                                                </th>
-
-                                            </tr>
-
-                                        </thead>
-
-
-                                        <tbody>
-
-                                            {courses.map(
-                                                (course, index) => (
-
-                                                    <tr
-                                                        key={
-                                                            course.id
-                                                        }
-                                                    >
-
-                                                        <td className="px-4">
-                                                            {index + 1}
-                                                        </td>
-
-                                                        <td className="fw-semibold">
-                                                            {
-                                                                course.courseCode
-                                                            }
-                                                        </td>
-
-                                                        <td>
-                                                            {
-                                                                course.courseName
-                                                            }
-                                                        </td>
-
-                                                        <td>
-
-                                                            <span className="badge bg-primary-subtle text-primary">
-
-                                                                {
-                                                                    getCategoryLabel(
-                                                                        course.category
-                                                                    )
-                                                                }
-
-                                                            </span>
-
-                                                        </td>
-
-                                                        <td>
-                                                            {
-                                                                getLTP(
-                                                                    course
-                                                                )
-                                                            }
-                                                        </td>
-
-                                                        <td className="fw-semibold">
-                                                            {
-                                                                course.credits
-                                                            }
-                                                        </td>
-
-                                                    </tr>
-
-                                                )
-                                            )}
-
-                                        </tbody>
-
-                                    </table>
-
-                                </div>
-
-                            </div>
-
-                        )}
-
-
-                        {/* =================================================
-                        ELECTIVES
-                    ================================================= */}
-
-                        {electives.length > 0 && (
-
-                            <div className="card border-0 shadow-sm mb-4">
-
-                                <div className="card-header bg-white py-3">
-
-                                    <h5 className="fw-bold mb-0">
-
-                                        <i className="bi bi-ui-checks-grid me-2 text-primary"></i>
-
-                                        Elective Selection
-
-                                    </h5>
+                                <div>
 
                                     <small className="text-muted">
 
-                                        {canEdit
-                                            ? "Select the subjects for your department."
-                                            : "Elective selections are view only."
-                                        }
+                                        {regulationCode}
+
+                                        {" • "}
+
+                                        {departmentCode}
 
                                     </small>
+
+                                    <h4 className="fw-bold mb-0 mt-1">
+                                        Semester {semester}
+                                    </h4>
 
                                 </div>
 
 
+                                <div className="mt-3 mt-md-0">
+
+                                    {canEdit ? (
+
+                                        <span className="badge bg-success-subtle text-success px-3 py-2">
+
+                                            <i className="bi bi-pencil-square me-1"></i>
+
+                                            Editable
+
+                                        </span>
+
+                                    ) : (
+
+                                        <span className="badge bg-secondary-subtle text-secondary px-3 py-2">
+
+                                            <i className="bi bi-eye me-1"></i>
+
+                                            View Only
+
+                                        </span>
+
+                                    )}
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    {/* SUMMARY */}
+
+                    <div className="row g-3 mb-4">
+
+                        {/* COURSES */}
+
+                        <div className="col-12 col-md-4">
+
+                            <div className="card border-0 shadow-sm h-100">
+
                                 <div className="card-body">
 
-                                    {electives.map(
-                                        group => {
+                                    <div className="d-flex align-items-center">
 
-                                            const groupSubjects =
-                                                subjects[group.id] ||
-                                                [];
+                                        <div
+                                            className="bg-primary-subtle text-primary rounded-3 d-flex align-items-center justify-content-center me-3"
+                                            style={{
+                                                width: "48px",
+                                                height: "48px"
+                                            }}
+                                        >
 
-                                            const loading =
-                                                subjectsLoading[
-                                                group.id
-                                                ];
+                                            <i className="bi bi-journal-bookmark fs-5"></i>
+
+                                        </div>
+
+                                        <div>
+
+                                            <small className="text-muted">
+                                                Courses
+                                            </small>
+
+                                            <h4 className="fw-bold mb-0">
+                                                {courses.length}
+                                            </h4>
+
+                                        </div>
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+                        </div>
 
 
-                                            const selectedIds =
-                                                selections[
-                                                group.id
-                                                ] || [];
+                        {/* CREDITS */}
+
+                        <div className="col-12 col-md-4">
+
+                            <div className="card border-0 shadow-sm h-100">
+
+                                <div className="card-body">
+
+                                    <div className="d-flex align-items-center">
+
+                                        <div
+                                            className="bg-success-subtle text-success rounded-3 d-flex align-items-center justify-content-center me-3"
+                                            style={{
+                                                width: "48px",
+                                                height: "48px"
+                                            }}
+                                        >
+
+                                            <i className="bi bi-award fs-5"></i>
+
+                                        </div>
 
 
-                                            const selectedSubjects =
-                                                groupSubjects.filter(
-                                                    subject =>
-                                                        selectedIds.includes(
-                                                            Number(subject.id)
-                                                        )
-                                                );
+                                        <div>
+
+                                            <small className="text-muted">
+                                                Total Credits
+                                            </small>
+
+                                            <h4 className="fw-bold mb-0">
+                                                {totalCredits}
+                                            </h4>
+
+                                            <small className="text-muted">
+
+                                                Courses: {
+                                                    totalCourseCredits
+                                                }
+
+                                                {" + "}
+
+                                                Electives: {
+                                                    totalElectiveCredits
+                                                }
+
+                                            </small>
+
+                                        </div>
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+                        </div>
 
 
-                                            return (
+                        {/* L-T-P */}
 
-                                                <div
+                        <div className="col-12 col-md-4">
+
+                            <div className="card border-0 shadow-sm h-100">
+
+                                <div className="card-body">
+
+                                    <div className="d-flex align-items-center">
+
+                                        <div
+                                            className="bg-warning-subtle text-warning rounded-3 d-flex align-items-center justify-content-center me-3"
+                                            style={{
+                                                width: "48px",
+                                                height: "48px"
+                                            }}
+                                        >
+
+                                            <i className="bi bi-grid-3x3-gap fs-5"></i>
+
+                                        </div>
+
+
+                                        <div>
+
+                                            <small className="text-muted">
+                                                Total L-T-P
+                                            </small>
+
+                                            <h4 className="fw-bold mb-0">
+                                                {totalLTP}
+                                            </h4>
+
+                                        </div>
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    {/* =================================================
+                        NORMAL COURSES
+                    ================================================= */}
+
+                    {courses.length > 0 && (
+
+                        <div className="card border-0 shadow-sm mb-4">
+
+                            <div className="card-header bg-white py-3">
+
+                                <h5 className="fw-bold mb-0">
+
+                                    <i className="bi bi-book me-2 text-primary"></i>
+
+                                    Courses
+
+                                </h5>
+
+                            </div>
+
+
+                            <div className="table-responsive">
+
+                                <table className="table table-hover align-middle mb-0">
+
+                                    <thead className="table-light">
+
+                                        <tr>
+
+                                            <th className="px-4">
+                                                #
+                                            </th>
+
+                                            <th>
+                                                Course Code
+                                            </th>
+
+                                            <th>
+                                                Course Name
+                                            </th>
+
+                                            <th>
+                                                Category
+                                            </th>
+
+                                            <th>
+                                                L-T-P
+                                            </th>
+
+                                            <th>
+                                                Credits
+                                            </th>
+
+                                        </tr>
+
+                                    </thead>
+
+
+                                    <tbody>
+
+                                        {courses.map(
+                                            (course, index) => (
+
+                                                <tr
                                                     key={
-                                                        group.id
+                                                        course.id
                                                     }
-                                                    className="border rounded-3 p-3 mb-3"
                                                 >
 
-                                                    {/* GROUP HEADER */}
+                                                    <td className="px-4">
+                                                        {index + 1}
+                                                    </td>
 
-                                                    <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-3">
+                                                    <td className="fw-semibold">
+                                                        {
+                                                            course.courseCode
+                                                        }
+                                                    </td>
 
-                                                        <div>
+                                                    <td>
+                                                        {
+                                                            course.courseName
+                                                        }
+                                                    </td>
 
-                                                            <h6 className="fw-bold mb-1">
-                                                                {
-                                                                    group.name
-                                                                }
-                                                            </h6>
+                                                    <td>
 
-                                                            <span className="badge bg-light text-dark border">
-                                                                {
-                                                                    group.electiveType
-                                                                }
-                                                            </span>
+                                                        <span className="badge bg-primary-subtle text-primary">
 
-                                                        </div>
+                                                            {
+                                                                getCategoryLabel(
+                                                                    course.category
+                                                                )
+                                                            }
+
+                                                        </span>
+
+                                                    </td>
+
+                                                    <td>
+                                                        {
+                                                            getLTP(
+                                                                course
+                                                            )
+                                                        }
+                                                    </td>
+
+                                                    <td className="fw-semibold">
+                                                        {
+                                                            course.credits
+                                                        }
+                                                    </td>
+
+                                                </tr>
+
+                                            )
+                                        )}
+
+                                    </tbody>
+
+                                </table>
+
+                            </div>
+
+                        </div>
+
+                    )}
 
 
-                                                        {selectedSubjects.length > 0 && (
+                    {/* =================================================
+                        ELECTIVES
+                    ================================================= */}
 
-                                                            <div className="mt-2 mt-md-0">
+                    {electives.length > 0 && (
 
-                                                                <span className="badge bg-success-subtle text-success">
+                        <div className="card border-0 shadow-sm mb-4">
 
-                                                                    <i className="bi bi-check-circle me-1"></i>
+                            <div className="card-header bg-white py-3">
 
-                                                                    {
-                                                                        selectedSubjects.length
-                                                                    }
+                                <h5 className="fw-bold mb-0">
 
-                                                                    {" Selected"}
+                                    <i className="bi bi-ui-checks-grid me-2 text-primary"></i>
 
-                                                                </span>
+                                    Elective Selection
 
-                                                            </div>
+                                </h5>
 
-                                                        )}
+                                <small className="text-muted">
+
+                                    {canEdit
+                                        ? "Select the subjects for your department."
+                                        : "Elective selections are view only."
+                                    }
+
+                                </small>
+
+                            </div>
+
+
+                            <div className="card-body">
+
+                                {electives.map(
+                                    group => {
+
+                                        const groupSubjects =
+                                            subjects[group.id] ||
+                                            [];
+
+                                        const loading =
+                                            subjectsLoading[
+                                                group.id
+                                            ];
+
+
+                                        const selectedIds =
+                                            selections[
+                                                group.id
+                                            ] || [];
+
+
+                                        const selectedSubjects =
+                                            groupSubjects.filter(
+                                                subject =>
+                                                    selectedIds.includes(
+                                                        Number(subject.id)
+                                                    )
+                                            );
+
+
+                                        return (
+
+                                            <div
+                                                key={
+                                                    group.id
+                                                }
+                                                className="border rounded-3 p-3 mb-3"
+                                            >
+
+                                                {/* GROUP HEADER */}
+
+                                                <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-3">
+
+                                                    <div>
+
+                                                        <h6 className="fw-bold mb-1">
+                                                            {
+                                                                group.name
+                                                            }
+                                                        </h6>
+
+                                                        <span className="badge bg-light text-dark border">
+                                                            {
+                                                                group.electiveType
+                                                            }
+                                                        </span>
 
                                                     </div>
 
 
-                                                    {/* CURRENT SELECTIONS */}
-
                                                     {selectedSubjects.length > 0 && (
 
-                                                        <div className="mb-3">
+                                                        <div className="mt-2 mt-md-0">
 
-                                                            <small className="text-muted d-block mb-2">
-                                                                Selected Subjects
-                                                            </small>
+                                                            <span className="badge bg-success-subtle text-success">
 
+                                                                <i className="bi bi-check-circle me-1"></i>
 
-                                                            <div className="d-flex flex-column gap-2">
-
-                                                                {selectedSubjects.map(
-                                                                    subject => (
-
-                                                                        <div
-                                                                            key={
-                                                                                subject.id
-                                                                            }
-                                                                            className="alert alert-success py-2 px-3 mb-0 d-flex justify-content-between align-items-center"
-                                                                        >
-
-                                                                            <small>
-
-                                                                                <strong>
-                                                                                    {
-                                                                                        subject.courseCode
-                                                                                    }
-                                                                                </strong>
-
-                                                                                {" - "}
-
-                                                                                {
-                                                                                    subject.courseName
-                                                                                }
-
-                                                                                {" • "}
-
-                                                                                {
-                                                                                    subject.credits
-                                                                                }
-
-                                                                                {" Credits"}
-
-                                                                            </small>
-
-
-                                                                            {canEdit && (
-
-                                                                                <button
-                                                                                    type="button"
-                                                                                    className="btn btn-sm btn-outline-danger ms-2"
-                                                                                    onClick={() =>
-                                                                                        removeSelection(
-                                                                                            group.id,
-                                                                                            subject.id
-                                                                                        )
-                                                                                    }
-                                                                                >
-
-                                                                                    <i className="bi bi-x-lg"></i>
-
-                                                                                </button>
-
-                                                                            )}
-
-                                                                        </div>
-
-                                                                    )
-                                                                )}
-
-                                                            </div>
-
-                                                        </div>
-
-                                                    )}
-
-
-                                                    {/* SUBJECT SELECT */}
-
-                                                    {loading ? (
-
-                                                        <div className="text-muted">
-
-                                                            <span
-                                                                className="spinner-border spinner-border-sm me-2"
-                                                            ></span>
-
-                                                            Loading available subjects...
-
-                                                        </div>
-
-                                                    ) : (
-
-                                                        <>
-
-                                                            <label className="form-label fw-semibold">
-
-                                                                {canEdit
-                                                                    ? "Select Subject(s)"
-                                                                    : "Available Subjects"
+                                                                {
+                                                                    selectedSubjects.length
                                                                 }
 
-                                                            </label>
+                                                                {" Selected"}
 
+                                                            </span>
 
-                                                            {canEdit ? (
-
-                                                                <select
-                                                                    className="form-select"
-                                                                    multiple
-                                                                    size={
-                                                                        Math.min(
-                                                                            Math.max(
-                                                                                groupSubjects.length,
-                                                                                3
-                                                                            ),
-                                                                            8
-                                                                        )
-                                                                    }
-                                                                    value={
-                                                                        selectedIds.map(
-                                                                            String
-                                                                        )
-                                                                    }
-                                                                    onChange={
-                                                                        event => {
-
-                                                                            const selectedValues =
-                                                                                Array.from(
-                                                                                    event.target.selectedOptions
-                                                                                ).map(
-                                                                                    option =>
-                                                                                        Number(
-                                                                                            option.value
-                                                                                        )
-                                                                                );
-
-
-                                                                            setSelections(
-                                                                                previous => ({
-                                                                                    ...previous,
-                                                                                    [group.id]:
-                                                                                        selectedValues
-                                                                                })
-                                                                            );
-
-                                                                        }
-                                                                    }
-                                                                >
-
-                                                                    {groupSubjects.map(
-                                                                        subject => (
-
-                                                                            <option
-                                                                                key={
-                                                                                    subject.id
-                                                                                }
-                                                                                value={
-                                                                                    subject.id
-                                                                                }
-                                                                            >
-
-                                                                                {
-                                                                                    subject.courseCode
-                                                                                }
-
-                                                                                {" - "}
-
-                                                                                {
-                                                                                    subject.courseName
-                                                                                }
-
-                                                                                {" ("}
-
-                                                                                {
-                                                                                    subject.credits
-                                                                                }
-
-                                                                                {" Credits)"}
-
-                                                                            </option>
-
-                                                                        )
-                                                                    )}
-
-                                                                </select>
-
-                                                            ) : (
-
-                                                                <div className="list-group">
-
-                                                                    {groupSubjects.map(
-                                                                        subject => {
-
-                                                                            const isSelected =
-                                                                                selectedIds.includes(
-                                                                                    Number(
-                                                                                        subject.id
-                                                                                    )
-                                                                                );
-
-
-                                                                            return (
-
-                                                                                <div
-                                                                                    key={
-                                                                                        subject.id
-                                                                                    }
-                                                                                    className={
-                                                                                        `list-group-item d-flex justify-content-between align-items-center ${isSelected
-                                                                                            ? "list-group-item-success"
-                                                                                            : ""
-                                                                                        }`
-                                                                                    }
-                                                                                >
-
-                                                                                    <div>
-
-                                                                                        <strong>
-                                                                                            {
-                                                                                                subject.courseCode
-                                                                                            }
-                                                                                        </strong>
-
-                                                                                        {" - "}
-
-                                                                                        {
-                                                                                            subject.courseName
-                                                                                        }
-
-                                                                                    </div>
-
-
-                                                                                    <div className="d-flex align-items-center gap-2">
-
-                                                                                        <span className="badge bg-light text-dark border">
-
-                                                                                            {
-                                                                                                subject.credits
-                                                                                            }
-
-                                                                                            {" Credits"}
-
-                                                                                        </span>
-
-
-                                                                                        {isSelected && (
-
-                                                                                            <i className="bi bi-check-circle-fill text-success"></i>
-
-                                                                                        )}
-
-                                                                                    </div>
-
-                                                                                </div>
-
-                                                                            );
-
-                                                                        }
-                                                                    )}
-
-                                                                </div>
-
-                                                            )}
-
-
-                                                            {canEdit && (
-
-                                                                <small className="text-muted d-block mt-2">
-
-                                                                    <i className="bi bi-info-circle me-1"></i>
-
-                                                                    Hold
-                                                                    {" "}
-                                                                    <strong>Ctrl</strong>
-                                                                    {" "}
-                                                                    (Windows)
-                                                                    or
-                                                                    {" "}
-                                                                    <strong>Command</strong>
-                                                                    {" "}
-                                                                    (Mac)
-                                                                    to select multiple subjects.
-
-                                                                </small>
-
-                                                            )}
-
-
-                                                            {!canEdit && (
-
-                                                                <small className="text-muted d-block mt-2">
-
-                                                                    <i className="bi bi-lock me-1"></i>
-
-                                                                    Only the HOD/DEAN
-                                                                    of this department
-                                                                    can modify selections.
-
-                                                                </small>
-
-                                                            )}
-
-                                                        </>
+                                                        </div>
 
                                                     )}
 
                                                 </div>
 
-                                            );
 
-                                        }
-                                    )}
+                                                {/* CURRENT SELECTIONS */}
 
-                                </div>
+                                                {selectedSubjects.length > 0 && (
+
+                                                    <div className="mb-3">
+
+                                                        <small className="text-muted d-block mb-2">
+                                                            Selected Subjects
+                                                        </small>
 
 
-                                {/* =================================================
-                                SUBMIT
-                            ================================================= */}
+                                                        <div className="d-flex flex-column gap-2">
 
-                                {canEdit && (
+                                                            {selectedSubjects.map(
+                                                                subject => (
 
-                                    <div className="card-footer bg-white border-top p-3">
+                                                                    <div
+                                                                        key={
+                                                                            subject.id
+                                                                        }
+                                                                        className="alert alert-success py-2 px-3 mb-0 d-flex justify-content-between align-items-center"
+                                                                    >
 
-                                        <div className="d-flex justify-content-end">
+                                                                        <small>
 
-                                            <button
-                                                className="btn btn-primary px-4"
-                                                onClick={
-                                                    handleSubmit
-                                                }
-                                                disabled={
-                                                    saving
-                                                }
-                                            >
+                                                                            <strong>
+                                                                                {
+                                                                                    subject.courseCode
+                                                                                }
+                                                                            </strong>
 
-                                                {saving ? (
+                                                                            {" - "}
 
-                                                    <>
+                                                                            {
+                                                                                subject.courseName
+                                                                            }
+
+                                                                            {" • "}
+
+                                                                            {
+                                                                                subject.credits
+                                                                            }
+
+                                                                            {" Credits"}
+
+                                                                        </small>
+
+
+                                                                        {canEdit && (
+
+                                                                            <button
+                                                                                type="button"
+                                                                                className="btn btn-sm btn-outline-danger ms-2"
+                                                                                onClick={() =>
+                                                                                    removeSelection(
+                                                                                        group.id,
+                                                                                        subject.id
+                                                                                    )
+                                                                                }
+                                                                            >
+
+                                                                                <i className="bi bi-x-lg"></i>
+
+                                                                            </button>
+
+                                                                        )}
+
+                                                                    </div>
+
+                                                                )
+                                                            )}
+
+                                                        </div>
+
+                                                    </div>
+
+                                                )}
+
+
+                                                {/* SUBJECT SELECT */}
+
+                                                {loading ? (
+
+                                                    <div className="text-muted">
 
                                                         <span
                                                             className="spinner-border spinner-border-sm me-2"
                                                         ></span>
 
-                                                        Saving...
+                                                        Loading available subjects...
 
-                                                    </>
+                                                    </div>
 
                                                 ) : (
 
                                                     <>
 
-                                                        <i className="bi bi-check-lg me-2"></i>
+                                                        <label className="form-label fw-semibold">
 
-                                                        Save Selections
+                                                            {canEdit
+                                                                ? "Select Subject(s)"
+                                                                : "Available Subjects"
+                                                            }
+
+                                                        </label>
+
+
+                                                        {canEdit ? (
+
+                                                            <select
+                                                                className="form-select"
+                                                                multiple
+                                                                size={
+                                                                    Math.min(
+                                                                        Math.max(
+                                                                            groupSubjects.length,
+                                                                            3
+                                                                        ),
+                                                                        8
+                                                                    )
+                                                                }
+                                                                value={
+                                                                    selectedIds.map(
+                                                                        String
+                                                                    )
+                                                                }
+                                                                onChange={
+                                                                    event => {
+
+                                                                        const selectedValues =
+                                                                            Array.from(
+                                                                                event.target.selectedOptions
+                                                                            ).map(
+                                                                                option =>
+                                                                                    Number(
+                                                                                        option.value
+                                                                                    )
+                                                                            );
+
+
+                                                                        setSelections(
+                                                                            previous => ({
+                                                                                ...previous,
+                                                                                [group.id]:
+                                                                                    selectedValues
+                                                                            })
+                                                                        );
+
+                                                                    }
+                                                                }
+                                                            >
+
+                                                                {groupSubjects.map(
+                                                                    subject => (
+
+                                                                        <option
+                                                                            key={
+                                                                                subject.id
+                                                                            }
+                                                                            value={
+                                                                                subject.id
+                                                                            }
+                                                                        >
+
+                                                                            {
+                                                                                subject.courseCode
+                                                                            }
+
+                                                                            {" - "}
+
+                                                                            {
+                                                                                subject.courseName
+                                                                            }
+
+                                                                            {" ("}
+
+                                                                            {
+                                                                                subject.credits
+                                                                            }
+
+                                                                            {" Credits)"}
+
+                                                                        </option>
+
+                                                                    )
+                                                                )}
+
+                                                            </select>
+
+                                                        ) : (
+
+                                                            <div className="list-group">
+
+                                                                {groupSubjects.map(
+                                                                    subject => {
+
+                                                                        const isSelected =
+                                                                            selectedIds.includes(
+                                                                                Number(
+                                                                                    subject.id
+                                                                                )
+                                                                            );
+
+
+                                                                        return (
+
+                                                                            <div
+                                                                                key={
+                                                                                    subject.id
+                                                                                }
+                                                                                className={
+                                                                                    `list-group-item d-flex justify-content-between align-items-center ${
+                                                                                        isSelected
+                                                                                            ? "list-group-item-success"
+                                                                                            : ""
+                                                                                    }`
+                                                                                }
+                                                                            >
+
+                                                                                <div>
+
+                                                                                    <strong>
+                                                                                        {
+                                                                                            subject.courseCode
+                                                                                        }
+                                                                                    </strong>
+
+                                                                                    {" - "}
+
+                                                                                    {
+                                                                                        subject.courseName
+                                                                                    }
+
+                                                                                </div>
+
+
+                                                                                <div className="d-flex align-items-center gap-2">
+
+                                                                                    <span className="badge bg-light text-dark border">
+
+                                                                                        {
+                                                                                            subject.credits
+                                                                                        }
+
+                                                                                        {" Credits"}
+
+                                                                                    </span>
+
+
+                                                                                    {isSelected && (
+
+                                                                                        <i className="bi bi-check-circle-fill text-success"></i>
+
+                                                                                    )}
+
+                                                                                </div>
+
+                                                                            </div>
+
+                                                                        );
+
+                                                                    }
+                                                                )}
+
+                                                            </div>
+
+                                                        )}
+
+
+                                                        {canEdit && (
+
+                                                            <small className="text-muted d-block mt-2">
+
+                                                                <i className="bi bi-info-circle me-1"></i>
+
+                                                                Hold
+                                                                {" "}
+                                                                <strong>Ctrl</strong>
+                                                                {" "}
+                                                                (Windows)
+                                                                or
+                                                                {" "}
+                                                                <strong>Command</strong>
+                                                                {" "}
+                                                                (Mac)
+                                                                to select multiple subjects.
+
+                                                            </small>
+
+                                                        )}
+
+
+                                                        {!canEdit && (
+
+                                                            <small className="text-muted d-block mt-2">
+
+                                                                <i className="bi bi-lock me-1"></i>
+
+                                                                Only the HOD/DEAN
+                                                                of this department
+                                                                can modify selections.
+
+                                                            </small>
+
+                                                        )}
 
                                                     </>
 
                                                 )}
 
-                                            </button>
+                                            </div>
 
-                                        </div>
+                                        );
 
-                                    </div>
-
+                                    }
                                 )}
 
                             </div>
 
-                        )}
 
-                    </>
+                            {/* =================================================
+                                SUBMIT
+                            ================================================= */}
 
-                )}
+                            {canEdit && (
+
+                                <div className="card-footer bg-white border-top p-3">
+
+                                    <div className="d-flex justify-content-end">
+
+                                        <button
+                                            className="btn btn-primary px-4"
+                                            onClick={
+                                                handleSubmit
+                                            }
+                                            disabled={
+                                                saving
+                                            }
+                                        >
+
+                                            {saving ? (
+
+                                                <>
+
+                                                    <span
+                                                        className="spinner-border spinner-border-sm me-2"
+                                                    ></span>
+
+                                                    Saving...
+
+                                                </>
+
+                                            ) : (
+
+                                                <>
+
+                                                    <i className="bi bi-check-lg me-2"></i>
+
+                                                    Save Selections
+
+                                                </>
+
+                                            )}
+
+                                        </button>
+
+                                    </div>
+
+                                </div>
+
+                            )}
+
+                        </div>
+
+                    )}
+
+                </>
+
+            )}
 
 
             {/* =================================================
@@ -2049,6 +2440,8 @@ function FacultyCurriculum() {
             ================================================= */}
 
             {!curriculumLoading &&
+                semester !== "ALL" &&
+                allCurricula.length === 0 &&
                 courses.length === 0 &&
                 electives.length === 0 &&
                 regulationCode &&
