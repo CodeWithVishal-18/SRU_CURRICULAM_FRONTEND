@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-
 import { toast } from "react-toastify";
 
 import AdminLayout from "../../layouts/AdminLayout";
@@ -62,6 +61,8 @@ function Curriculum() {
 
     // =====================================================
     // SELECTED SUBJECTS
+    //
+    // groupId -> [subjectId, subjectId, ...]
     // =====================================================
 
     const [selections, setSelections] =
@@ -105,6 +106,7 @@ function Curriculum() {
                     getAllDepartments()
                 ]);
 
+
                 setRegulations(
                     regulationResponse.data || []
                 );
@@ -124,8 +126,10 @@ function Curriculum() {
             } finally {
 
                 setInitialLoading(false);
+
             }
         };
+
 
         loadData();
 
@@ -147,6 +151,7 @@ function Curriculum() {
             return;
         }
 
+
         if (!departmentCode) {
 
             toast.error(
@@ -156,6 +161,7 @@ function Curriculum() {
             return;
         }
 
+
         if (!semester) {
 
             toast.error(
@@ -164,6 +170,7 @@ function Curriculum() {
 
             return;
         }
+
 
         try {
 
@@ -176,47 +183,88 @@ function Curriculum() {
                     semester
                 );
 
+
             const curriculum =
                 response.data;
+
 
             setCourses(
                 curriculum?.courses || []
             );
 
+
             const groups =
                 curriculum?.electives || [];
 
+
             setElectives(groups);
 
+
             // -------------------------------------------------
-            // Set existing selections
+            // SET EXISTING SELECTIONS
+            //
+            // Supports:
+            // selectedSubjects: [...]
+            //
+            // Also supports old:
+            // selectedSubject: {...}
             // -------------------------------------------------
 
             const existingSelections = {};
 
+
             groups.forEach((group) => {
 
-                if (group.selectedSubject) {
+                // New response format
+                if (
+                    Array.isArray(
+                        group.selectedSubjects
+                    )
+                ) {
 
-                    existingSelections[
-                        group.id
-                    ] =
-                        group.selectedSubject.id;
+                    existingSelections[group.id] =
+                        group.selectedSubjects.map(
+                            subject =>
+                                Number(subject.id)
+                        );
+
+                }
+
+                // Backward compatibility
+                else if (
+                    group.selectedSubject
+                ) {
+
+                    existingSelections[group.id] = [
+                        Number(
+                            group.selectedSubject.id
+                        )
+                    ];
+
+                }
+
+                else {
+
+                    existingSelections[group.id] = [];
+
                 }
 
             });
+
 
             setSelections(
                 existingSelections
             );
 
+
             // -------------------------------------------------
-            // Load subjects
+            // LOAD SUBJECTS
             // -------------------------------------------------
 
             await loadAllElectiveSubjects(
                 groups
             );
+
 
         } catch (error) {
 
@@ -229,14 +277,20 @@ function Curriculum() {
                 "Failed to load curriculum"
             );
 
+
             setCourses([]);
+
             setElectives([]);
+
             setSubjects({});
+
             setSelections({});
+
 
         } finally {
 
             setCurriculumLoading(false);
+
         }
     };
 
@@ -251,6 +305,7 @@ function Curriculum() {
 
         const subjectData = {};
 
+
         for (const group of groups) {
 
             try {
@@ -262,13 +317,16 @@ function Curriculum() {
                     })
                 );
 
+
                 const response =
                     await getElectiveSubjects(
                         group.id
                     );
 
+
                 subjectData[group.id] =
                     response.data || [];
+
 
             } catch (error) {
 
@@ -277,7 +335,9 @@ function Curriculum() {
                     error
                 );
 
+
                 subjectData[group.id] = [];
+
 
             } finally {
 
@@ -287,15 +347,22 @@ function Curriculum() {
                         [group.id]: false
                     })
                 );
+
             }
         }
 
-        setSubjects(subjectData);
+
+        setSubjects(
+            subjectData
+        );
+
     };
 
 
     // =====================================================
-    // SELECT SUBJECT
+    // SELECT / DESELECT SUBJECT
+    //
+    // Multiple subjects allowed
     // =====================================================
 
     const handleSelectionChange = (
@@ -303,15 +370,66 @@ function Curriculum() {
         subjectId
     ) => {
 
+        const id =
+            Number(subjectId);
+
+
         setSelections(
-            previous => ({
-                ...previous,
-                [electiveGroupId]:
-                    subjectId
-                        ? Number(subjectId)
-                        : null
-            })
+            previous => {
+
+                const current =
+                    previous[electiveGroupId] || [];
+
+
+                const alreadySelected =
+                    current.includes(id);
+
+
+                if (alreadySelected) {
+
+                    return {
+                        ...previous,
+
+                        [electiveGroupId]:
+                            current.filter(
+                                selectedId =>
+                                    selectedId !== id
+                            )
+                    };
+
+                }
+
+
+                return {
+                    ...previous,
+
+                    [electiveGroupId]: [
+                        ...current,
+                        id
+                    ]
+                };
+
+            }
         );
+
+    };
+
+
+    // =====================================================
+    // CHECK SUBJECT
+    // =====================================================
+
+    const isSubjectSelected = (
+        groupId,
+        subjectId
+    ) => {
+
+        return (
+            selections[groupId] || []
+        ).includes(
+            Number(subjectId)
+        );
+
     };
 
 
@@ -321,48 +439,59 @@ function Curriculum() {
 
     const handleSubmit = async () => {
 
-        if (!regulationCode ||
+        if (
+            !regulationCode ||
             !departmentCode ||
-            !semester) {
+            !semester
+        ) {
 
             toast.error(
                 "Please select regulation, department and semester"
             );
 
             return;
+
         }
 
+
         // -------------------------------------------------
-        // Only send groups where a subject is selected
+        // CREATE COMPLETE SELECTION LIST
+        //
+        // Multiple subjects per group
         // -------------------------------------------------
 
-        const selectionList =
-            electives
-                .filter(
-                    group =>
-                        selections[group.id]
-                )
-                .map(group => ({
-                    electiveGroupId:
-                        group.id,
-
-                    subjectId:
-                        selections[group.id]
-                }));
+        const selectionList = [];
 
 
-        if (selectionList.length === 0) {
+        electives.forEach(
+            group => {
 
-            toast.error(
-                "Please select at least one elective subject"
-            );
+                const selected =
+                    selections[group.id] || [];
 
-            return;
-        }
+
+                selected.forEach(
+                    subjectId => {
+
+                        selectionList.push({
+                            electiveGroupId:
+                                group.id,
+
+                            subjectId:
+                                subjectId
+                        });
+
+                    }
+                );
+
+            }
+        );
+
 
         try {
 
             setSaving(true);
+
 
             const response =
                 await selectElectives(
@@ -372,15 +501,19 @@ function Curriculum() {
                     selectionList
                 );
 
+
             toast.success(
                 response.message ||
                 "Elective selections updated successfully"
             );
 
-            // Reload curriculum so selected
-            // subjects and totals are refreshed.
+
+            // -------------------------------------------------
+            // Reload curriculum
+            // -------------------------------------------------
 
             await handleLoadCurriculum();
+
 
         } catch (error) {
 
@@ -393,104 +526,156 @@ function Curriculum() {
                 "Failed to update elective selections"
             );
 
+
         } finally {
 
             setSaving(false);
+
         }
+
     };
 
 
     // =====================================================
-    // TOTALS
+    // TOTAL COURSES
     // =====================================================
 
     const totalCourses =
         courses.length;
 
+
+    // =====================================================
+    // NORMAL COURSE CREDITS
+    // =====================================================
+
     const totalCourseCredits =
         courses.reduce(
             (total, course) =>
                 total +
-                (Number(course.credits) || 0),
+                (
+                    Number(course.credits) || 0
+                ),
             0
         );
 
 
-    const selectedElectiveSubjects =
-        electives
-            .map(group => {
+    // =====================================================
+    // SELECTED ELECTIVE GROUPS
+    //
+    // IMPORTANT:
+    //
+    // Group L/T/P/C is counted ONCE.
+    //
+    // Even if:
+    //
+    // Group A -> 1 subject selected
+    // Group A -> 2 subjects selected
+    // Group A -> 10 subjects selected
+    //
+    // The group's slot contribution is counted once.
+    // =====================================================
 
-                const selectedId =
-                    selections[group.id];
+    const selectedElectiveGroups =
+        electives.filter(
+            group =>
+                (
+                    selections[group.id] || []
+                ).length > 0
+        );
 
-                return (
-                    subjects[group.id]
-                        ?.find(
-                            subject =>
-                                subject.id ===
-                                selectedId
-                        ) || null
-                );
 
-            })
-            .filter(Boolean);
-
+    // =====================================================
+    // ELECTIVE CREDITS
+    // =====================================================
 
     const totalElectiveCredits =
-        selectedElectiveSubjects.reduce(
-            (total, subject) =>
+        selectedElectiveGroups.reduce(
+            (total, group) =>
                 total +
-                (Number(subject.credits) || 0),
+                (
+                    Number(group.credits) || 0
+                ),
             0
         );
 
+
+    // =====================================================
+    // TOTAL CREDITS
+    // =====================================================
 
     const totalCredits =
         totalCourseCredits +
         totalElectiveCredits;
 
 
+    // =====================================================
+    // LECTURE
+    // =====================================================
+
     const totalLecture =
         courses.reduce(
             (total, course) =>
                 total +
-                (Number(course.lecture) || 0),
+                (
+                    Number(course.lecture) || 0
+                ),
             0
-        ) +
-        selectedElectiveSubjects.reduce(
-            (total, subject) =>
+        )
+        +
+        selectedElectiveGroups.reduce(
+            (total, group) =>
                 total +
-                (Number(subject.lecture) || 0),
+                (
+                    Number(group.lecture) || 0
+                ),
             0
         );
 
+
+    // =====================================================
+    // TUTORIAL
+    // =====================================================
 
     const totalTutorial =
         courses.reduce(
             (total, course) =>
                 total +
-                (Number(course.tutorial) || 0),
+                (
+                    Number(course.tutorial) || 0
+                ),
             0
-        ) +
-        selectedElectiveSubjects.reduce(
-            (total, subject) =>
+        )
+        +
+        selectedElectiveGroups.reduce(
+            (total, group) =>
                 total +
-                (Number(subject.tutorial) || 0),
+                (
+                    Number(group.tutorial) || 0
+                ),
             0
         );
 
+
+    // =====================================================
+    // PRACTICAL
+    // =====================================================
 
     const totalPractical =
         courses.reduce(
             (total, course) =>
                 total +
-                (Number(course.practical) || 0),
+                (
+                    Number(course.practical) || 0
+                ),
             0
-        ) +
-        selectedElectiveSubjects.reduce(
-            (total, subject) =>
+        )
+        +
+        selectedElectiveGroups.reduce(
+            (total, group) =>
                 total +
-                (Number(subject.practical) || 0),
+                (
+                    Number(group.practical) || 0
+                ),
             0
         );
 
@@ -504,7 +689,7 @@ function Curriculum() {
 
 
     // =====================================================
-    // CATEGORY
+    // CATEGORY LABEL
     // =====================================================
 
     const getCategoryLabel = (
@@ -512,24 +697,40 @@ function Curriculum() {
     ) => {
 
         const labels = {
-            CORE: "Core",
-            ELECTIVE: "Elective",
+
+            CORE:
+                "Core",
+
+            ELECTIVE:
+                "Elective",
+
             BASIC_SCIENCE:
                 "Basic Science",
+
             ENGINEERING_SCIENCE:
                 "Engineering Science",
+
             HUMANITIES:
                 "Humanities",
-            LAB: "Lab",
-            PROJECT: "Project",
-            OTHER: "Other"
+
+            LAB:
+                "Lab",
+
+            PROJECT:
+                "Project",
+
+            OTHER:
+                "Other"
+
         };
+
 
         return (
             labels[category] ||
             category ||
             "Other"
         );
+
     };
 
 
@@ -537,13 +738,23 @@ function Curriculum() {
     // L-T-P
     // =====================================================
 
-    const getLTP = (item) => {
+    const getLTP = (
+        item
+    ) => {
 
-        return `${item.lecture ?? 0}-${item.tutorial ?? 0}-${item.practical ?? 0}`;
+        return (
+            `${item.lecture ?? 0}-${item.tutorial ?? 0}-${item.practical ?? 0}`
+        );
+
     };
 
 
+    // =====================================================
+    // RENDER
+    // =====================================================
+
     return (
+
         <AdminLayout>
 
             {/* =================================================
@@ -563,6 +774,10 @@ function Curriculum() {
 
             </div>
 
+
+            {/* =================================================
+                INITIAL LOADING
+            ================================================= */}
 
             {initialLoading ? (
 
@@ -594,6 +809,9 @@ function Curriculum() {
 
                             <div className="row g-3 align-items-end">
 
+
+                                {/* REGULATION */}
+
                                 <div className="col-12 col-md-4">
 
                                     <label className="form-label fw-semibold">
@@ -604,17 +822,23 @@ function Curriculum() {
                                         className="form-select"
                                         value={regulationCode}
                                         onChange={(e) => {
+
                                             setRegulationCode(
                                                 e.target.value
                                             );
+
                                             setCourses([]);
                                             setElectives([]);
+                                            setSubjects({});
+                                            setSelections({});
+
                                         }}
                                     >
 
                                         <option value="">
                                             Select Regulation
                                         </option>
+
 
                                         {regulations.map(
                                             regulation => (
@@ -640,6 +864,8 @@ function Curriculum() {
                                 </div>
 
 
+                                {/* DEPARTMENT */}
+
                                 <div className="col-12 col-md-4">
 
                                     <label className="form-label fw-semibold">
@@ -650,17 +876,23 @@ function Curriculum() {
                                         className="form-select"
                                         value={departmentCode}
                                         onChange={(e) => {
+
                                             setDepartmentCode(
                                                 e.target.value
                                             );
+
                                             setCourses([]);
                                             setElectives([]);
+                                            setSubjects({});
+                                            setSelections({});
+
                                         }}
                                     >
 
                                         <option value="">
                                             Select Department
                                         </option>
+
 
                                         {departments.map(
                                             department => (
@@ -691,6 +923,8 @@ function Curriculum() {
                                 </div>
 
 
+                                {/* SEMESTER */}
+
                                 <div className="col-12 col-md-2">
 
                                     <label className="form-label fw-semibold">
@@ -701,11 +935,16 @@ function Curriculum() {
                                         className="form-select"
                                         value={semester}
                                         onChange={(e) => {
+
                                             setSemester(
                                                 e.target.value
                                             );
+
                                             setCourses([]);
                                             setElectives([]);
+                                            setSubjects({});
+                                            setSelections({});
+
                                         }}
                                     >
 
@@ -713,7 +952,8 @@ function Curriculum() {
                                             Select
                                         </option>
 
-                                        {[1,2,3,4,5,6,7,8]
+
+                                        {[1, 2, 3, 4, 5, 6, 7, 8]
                                             .map(
                                                 sem => (
 
@@ -732,6 +972,8 @@ function Curriculum() {
                                 </div>
 
 
+                                {/* VIEW */}
+
                                 <div className="col-12 col-md-2">
 
                                     <button
@@ -746,7 +988,9 @@ function Curriculum() {
 
                                         {curriculumLoading ? (
 
-                                            <span className="spinner-border spinner-border-sm"></span>
+                                            <span
+                                                className="spinner-border spinner-border-sm"
+                                            ></span>
 
                                         ) : (
 
@@ -775,27 +1019,78 @@ function Curriculum() {
                     {(courses.length > 0 ||
                         electives.length > 0) && (
 
-                        <>
+                            <>
 
-                            {/* =================================================
+                                {/* =================================================
                                 SUMMARY
                             ================================================= */}
 
-                            <div className="row g-3 mb-4">
+                                <div className="row g-3 mb-4">
 
-                                <div className="col-12 col-md-4">
 
-                                    <div className="card border-0 shadow-sm">
+                                    {/* TOTAL COURSES */}
 
-                                        <div className="card-body">
+                                    <div className="col-12 col-md-4">
 
-                                            <small className="text-muted">
-                                                Total Courses
-                                            </small>
+                                        <div className="card border-0 shadow-sm">
 
-                                            <h3 className="fw-bold mb-0">
-                                                {totalCourses}
-                                            </h3>
+                                            <div className="card-body">
+
+                                                <small className="text-muted">
+                                                    Total Courses
+                                                </small>
+
+                                                <h3 className="fw-bold mb-0">
+                                                    {totalCourses}
+                                                </h3>
+
+                                            </div>
+
+                                        </div>
+
+                                    </div>
+
+
+                                    {/* TOTAL CREDITS */}
+
+                                    <div className="col-12 col-md-4">
+
+                                        <div className="card border-0 shadow-sm">
+
+                                            <div className="card-body">
+
+                                                <small className="text-muted">
+                                                    Total Credits
+                                                </small>
+
+                                                <h3 className="fw-bold mb-0">
+                                                    {totalCredits}
+                                                </h3>
+
+                                            </div>
+
+                                        </div>
+
+                                    </div>
+
+
+                                    {/* TOTAL LTP */}
+
+                                    <div className="col-12 col-md-4">
+
+                                        <div className="card border-0 shadow-sm">
+
+                                            <div className="card-body">
+
+                                                <small className="text-muted">
+                                                    Total L-T-P
+                                                </small>
+
+                                                <h3 className="fw-bold mb-0">
+                                                    {totalLTP}
+                                                </h3>
+
+                                            </div>
 
                                         </div>
 
@@ -804,379 +1099,459 @@ function Curriculum() {
                                 </div>
 
 
-                                <div className="col-12 col-md-4">
-
-                                    <div className="card border-0 shadow-sm">
-
-                                        <div className="card-body">
-
-                                            <small className="text-muted">
-                                                Total Credits
-                                            </small>
-
-                                            <h3 className="fw-bold mb-0">
-                                                {totalCredits}
-                                            </h3>
-
-                                        </div>
-
-                                    </div>
-
-                                </div>
-
-
-                                <div className="col-12 col-md-4">
-
-                                    <div className="card border-0 shadow-sm">
-
-                                        <div className="card-body">
-
-                                            <small className="text-muted">
-                                                Total L-T-P
-                                            </small>
-
-                                            <h3 className="fw-bold mb-0">
-                                                {totalLTP}
-                                            </h3>
-
-                                        </div>
-
-                                    </div>
-
-                                </div>
-
-                            </div>
-
-
-                            {/* =================================================
+                                {/* =================================================
                                 COURSES
                             ================================================= */}
 
-                            {courses.length > 0 && (
+                                {courses.length > 0 && (
 
-                                <div className="card border-0 shadow-sm mb-4">
+                                    <div className="card border-0 shadow-sm mb-4">
 
-                                    <div className="card-header bg-white py-3">
+                                        <div className="card-header bg-white py-3">
 
-                                        <h5 className="fw-bold mb-0">
-                                            Courses
-                                        </h5>
+                                            <h5 className="fw-bold mb-0">
+                                                Courses
+                                            </h5>
 
-                                    </div>
+                                        </div>
 
-                                    <div className="table-responsive">
 
-                                        <table className="table table-hover align-middle mb-0">
+                                        <div className="table-responsive">
 
-                                            <thead className="table-light">
+                                            <table className="table table-hover align-middle mb-0">
 
-                                                <tr>
+                                                <thead className="table-light">
 
-                                                    <th className="px-4">
-                                                        #
-                                                    </th>
+                                                    <tr>
 
-                                                    <th>
-                                                        Code
-                                                    </th>
+                                                        <th className="px-4">
+                                                            #
+                                                        </th>
 
-                                                    <th>
-                                                        Course Name
-                                                    </th>
+                                                        <th>
+                                                            Code
+                                                        </th>
 
-                                                    <th>
-                                                        Category
-                                                    </th>
+                                                        <th>
+                                                            Course Name
+                                                        </th>
 
-                                                    <th>
-                                                        L-T-P
-                                                    </th>
+                                                        <th>
+                                                            Category
+                                                        </th>
 
-                                                    <th>
-                                                        Credits
-                                                    </th>
+                                                        <th>
+                                                            L-T-P
+                                                        </th>
 
-                                                </tr>
+                                                        <th>
+                                                            Credits
+                                                        </th>
 
-                                            </thead>
+                                                    </tr>
 
-                                            <tbody>
+                                                </thead>
 
-                                                {courses.map(
-                                                    (course, index) => (
 
-                                                        <tr
-                                                            key={
-                                                                course.id
-                                                            }
-                                                        >
+                                                <tbody>
 
-                                                            <td className="px-4">
-                                                                {
-                                                                    index + 1
+                                                    {courses.map(
+                                                        (
+                                                            course,
+                                                            index
+                                                        ) => (
+
+                                                            <tr
+                                                                key={
+                                                                    course.id
                                                                 }
-                                                            </td>
+                                                            >
 
-                                                            <td className="fw-semibold">
-                                                                {
-                                                                    course.courseCode
-                                                                }
-                                                            </td>
-
-                                                            <td>
-                                                                {
-                                                                    course.courseName
-                                                                }
-                                                            </td>
-
-                                                            <td>
-
-                                                                <span className="badge bg-primary-subtle text-primary">
-
+                                                                <td className="px-4">
                                                                     {
-                                                                        getCategoryLabel(
-                                                                            course.category
+                                                                        index + 1
+                                                                    }
+                                                                </td>
+
+                                                                <td className="fw-semibold">
+                                                                    {
+                                                                        course.courseCode
+                                                                    }
+                                                                </td>
+
+                                                                <td>
+                                                                    {
+                                                                        course.courseName
+                                                                    }
+                                                                </td>
+
+                                                                <td>
+
+                                                                    <span className="badge bg-primary-subtle text-primary">
+
+                                                                        {
+                                                                            getCategoryLabel(
+                                                                                course.category
+                                                                            )
+                                                                        }
+
+                                                                    </span>
+
+                                                                </td>
+
+                                                                <td>
+                                                                    {
+                                                                        getLTP(
+                                                                            course
                                                                         )
                                                                     }
+                                                                </td>
 
-                                                                </span>
+                                                                <td className="fw-semibold">
+                                                                    {
+                                                                        course.credits
+                                                                    }
+                                                                </td>
 
-                                                            </td>
+                                                            </tr>
 
-                                                            <td>
-                                                                {
-                                                                    getLTP(
-                                                                        course
-                                                                    )
-                                                                }
-                                                            </td>
+                                                        )
+                                                    )}
 
-                                                            <td className="fw-semibold">
-                                                                {
-                                                                    course.credits
-                                                                }
-                                                            </td>
+                                                </tbody>
 
-                                                        </tr>
+                                            </table>
 
-                                                    )
-                                                )}
-
-                                            </tbody>
-
-                                        </table>
+                                        </div>
 
                                     </div>
 
-                                </div>
-
-                            )}
+                                )}
 
 
-                            {/* =================================================
+                                {/* =================================================
                                 ELECTIVES
                             ================================================= */}
 
-                            {electives.length > 0 && (
+                                {electives.length > 0 && (
 
-                                <div className="card border-0 shadow-sm">
+                                    <div className="card border-0 shadow-sm">
 
-                                    <div className="card-header bg-white py-3">
+                                        <div className="card-header bg-white py-3">
 
-                                        <h5 className="fw-bold mb-0">
-                                            Electives
-                                        </h5>
+                                            <div className="d-flex justify-content-between align-items-center">
 
-                                    </div>
+                                                <div>
 
-                                    <div className="card-body">
+                                                    <h5 className="fw-bold mb-0">
+                                                        Electives
+                                                    </h5>
 
-                                        {electives.map(
-                                            (group) => {
+                                                    <small className="text-muted">
+                                                        You can select multiple
+                                                        subjects from an elective
+                                                        group.
+                                                    </small>
 
-                                                const groupSubjects =
-                                                    subjects[group.id] ||
-                                                    [];
+                                                </div>
 
-                                                const loading =
-                                                    subjectsLoading[
+                                            </div>
+
+                                        </div>
+
+
+                                        <div className="card-body">
+
+
+                                            {electives.map(
+                                                (group) => {
+
+                                                    const groupSubjects =
+                                                        subjects[group.id] ||
+                                                        [];
+
+
+                                                    const loading =
+                                                        subjectsLoading[
                                                         group.id
-                                                    ];
+                                                        ];
 
-                                                return (
 
-                                                    <div
-                                                        key={
-                                                            group.id
-                                                        }
-                                                        className="border rounded-3 p-3 mb-3"
-                                                    >
+                                                    const selectedIds =
+                                                        selections[
+                                                        group.id
+                                                        ] || [];
 
-                                                        <div className="d-flex flex-column flex-md-row justify-content-between mb-3">
 
-                                                            <div>
+                                                    return (
 
-                                                                <h6 className="fw-bold mb-1">
-                                                                    {
-                                                                        group.name
-                                                                    }
-                                                                </h6>
+                                                        <div
+                                                            key={
+                                                                group.id
+                                                            }
+                                                            className="border rounded-3 p-3 mb-3"
+                                                        >
 
-                                                                <small className="text-muted">
 
-                                                                    {
-                                                                        group.electiveType
-                                                                    }
+                                                            {/* GROUP HEADER */}
 
-                                                                </small>
+                                                            <div className="d-flex flex-column flex-md-row justify-content-between mb-3">
+
+                                                                <div>
+
+                                                                    <h6 className="fw-bold mb-1">
+                                                                        {
+                                                                            group.name
+                                                                        }
+                                                                    </h6>
+
+                                                                    <small className="text-muted">
+
+                                                                        {
+                                                                            group.electiveType
+                                                                        }
+
+                                                                        {" • "}
+
+                                                                        L-T-P:
+                                                                        {" "}
+
+                                                                        {
+                                                                            getLTP(
+                                                                                group
+                                                                            )
+                                                                        }
+
+                                                                        {" • "}
+
+                                                                        Credits:
+                                                                        {" "}
+
+                                                                        {
+                                                                            group.credits
+                                                                        }
+
+                                                                    </small>
+
+                                                                </div>
+
+
+                                                                {selectedIds.length > 0 && (
+
+                                                                    <span className="badge bg-success-subtle text-success mt-2 mt-md-0">
+
+                                                                        <i className="bi bi-check-circle me-1"></i>
+
+                                                                        {
+                                                                            selectedIds.length
+                                                                        }
+
+                                                                        {" "}
+                                                                        selected
+
+                                                                    </span>
+
+                                                                )}
 
                                                             </div>
 
-                                                            {group.selectedSubject && (
 
-                                                                <span className="badge bg-success-subtle text-success mt-2 mt-md-0">
+                                                            {/* SUBJECTS */}
 
-                                                                    <i className="bi bi-check-circle me-1"></i>
+                                                            {loading ? (
 
-                                                                    Selected
+                                                                <div className="text-muted small">
 
-                                                                </span>
+                                                                    <span
+                                                                        className="spinner-border spinner-border-sm me-2"
+                                                                    ></span>
+
+                                                                    Loading subjects...
+
+                                                                </div>
+
+                                                            ) : groupSubjects.length === 0 ? (
+
+                                                                <div className="alert alert-light border mb-0">
+
+                                                                    No elective subjects
+                                                                    available.
+
+                                                                </div>
+
+                                                            ) : (
+
+                                                                <div className="row g-2">
+
+                                                                    {groupSubjects.map(
+                                                                        subject => (
+
+                                                                            <div
+                                                                                key={
+                                                                                    subject.id
+                                                                                }
+                                                                                className="col-12 col-md-6"
+                                                                            >
+
+                                                                                <div
+                                                                                    className={
+                                                                                        `form-check border rounded-3 p-3 ps-5 ${isSubjectSelected(
+                                                                                            group.id,
+                                                                                            subject.id
+                                                                                        )
+                                                                                            ? "border-primary bg-primary-subtle"
+                                                                                            : ""
+                                                                                        }`
+                                                                                    }
+                                                                                >
+
+                                                                                    <input
+                                                                                        className="form-check-input"
+                                                                                        type="checkbox"
+                                                                                        id={
+                                                                                            `subject-${group.id}-${subject.id}`
+                                                                                        }
+                                                                                        checked={
+                                                                                            isSubjectSelected(
+                                                                                                group.id,
+                                                                                                subject.id
+                                                                                            )
+                                                                                        }
+                                                                                        onChange={() =>
+                                                                                            handleSelectionChange(
+                                                                                                group.id,
+                                                                                                subject.id
+                                                                                            )
+                                                                                        }
+                                                                                    />
+
+
+                                                                                    <label
+                                                                                        className="form-check-label w-100"
+                                                                                        htmlFor={
+                                                                                            `subject-${group.id}-${subject.id}`
+                                                                                        }
+                                                                                        style={{
+                                                                                            cursor:
+                                                                                                "pointer"
+                                                                                        }}
+                                                                                    >
+
+                                                                                        <div className="fw-semibold">
+
+                                                                                            {
+                                                                                                subject.courseCode
+                                                                                            }
+
+                                                                                            {" - "}
+
+                                                                                            {
+                                                                                                subject.courseName
+                                                                                            }
+
+                                                                                        </div>
+
+
+                                                                                        <small className="text-muted">
+
+                                                                                            L-T-P:
+                                                                                            {" "}
+
+                                                                                            {
+                                                                                                getLTP(
+                                                                                                    subject
+                                                                                                )
+                                                                                            }
+
+                                                                                            {" • "}
+
+                                                                                            Credits:
+                                                                                            {" "}
+
+                                                                                            {
+                                                                                                subject.credits
+                                                                                            }
+
+                                                                                        </small>
+
+                                                                                    </label>
+
+                                                                                </div>
+
+                                                                            </div>
+
+                                                                        )
+                                                                    )}
+
+                                                                </div>
 
                                                             )}
 
                                                         </div>
 
+                                                    );
 
-                                                        {loading ? (
-
-                                                            <div className="text-muted small">
-
-                                                                <span
-                                                                    className="spinner-border spinner-border-sm me-2"
-                                                                ></span>
-
-                                                                Loading subjects...
-
-                                                            </div>
-
-                                                        ) : (
-
-                                                            <select
-                                                                className="form-select"
-                                                                value={
-                                                                    selections[
-                                                                        group.id
-                                                                    ] || ""
-                                                                }
-                                                                onChange={(e) =>
-                                                                    handleSelectionChange(
-                                                                        group.id,
-                                                                        e.target.value
-                                                                    )
-                                                                }
-                                                            >
-
-                                                                <option value="">
-                                                                    Select Subject
-                                                                </option>
-
-                                                                {groupSubjects.map(
-                                                                    subject => (
-
-                                                                        <option
-                                                                            key={
-                                                                                subject.id
-                                                                            }
-                                                                            value={
-                                                                                subject.id
-                                                                            }
-                                                                        >
-
-                                                                            {
-                                                                                subject.courseCode
-                                                                            }
-
-                                                                            {" - "}
-
-                                                                            {
-                                                                                subject.courseName
-                                                                            }
-
-                                                                            {" ("}
-
-                                                                            {
-                                                                                subject.credits
-                                                                            }
-
-                                                                            {" Credits)"}
-
-                                                                        </option>
-
-                                                                    )
-                                                                )}
-
-                                                            </select>
-
-                                                        )}
-
-                                                    </div>
-
-                                                );
-                                            }
-                                        )}
-
-                                    </div>
-
-
-                                    {/* SUBMIT */}
-
-                                    <div className="card-footer bg-white border-top p-3">
-
-                                        <div className="d-flex justify-content-end">
-
-                                            <button
-                                                className="btn btn-primary px-4"
-                                                onClick={
-                                                    handleSubmit
                                                 }
-                                                disabled={
-                                                    saving
-                                                }
-                                            >
+                                            )}
 
-                                                {saving ? (
+                                        </div>
 
-                                                    <>
-                                                        <span
-                                                            className="spinner-border spinner-border-sm me-2"
-                                                        ></span>
 
-                                                        Saving...
-                                                    </>
+                                        {/* =================================================
+                                        SUBMIT
+                                    ================================================= */}
 
-                                                ) : (
+                                        <div className="card-footer bg-white border-top p-3">
 
-                                                    <>
-                                                        <i className="bi bi-check-lg me-2"></i>
+                                            <div className="d-flex justify-content-end">
 
-                                                        Submit Selections
-                                                    </>
+                                                <button
+                                                    className="btn btn-primary px-4"
+                                                    onClick={
+                                                        handleSubmit
+                                                    }
+                                                    disabled={
+                                                        saving
+                                                    }
+                                                >
 
-                                                )}
+                                                    {saving ? (
 
-                                            </button>
+                                                        <>
+
+                                                            <span
+                                                                className="spinner-border spinner-border-sm me-2"
+                                                            ></span>
+
+                                                            Saving...
+
+                                                        </>
+
+                                                    ) : (
+
+                                                        <>
+
+                                                            <i className="bi bi-check-lg me-2"></i>
+
+                                                            Submit Selections
+
+                                                        </>
+
+                                                    )}
+
+                                                </button>
+
+                                            </div>
 
                                         </div>
 
                                     </div>
 
-                                </div>
+                                )}
 
-                            )}
+                            </>
 
-                        </>
-
-                    )}
+                        )}
 
 
                     {/* =================================================
@@ -1201,9 +1576,11 @@ function Curriculum() {
                                         }}
                                     ></i>
 
+
                                     <h5 className="mt-3">
                                         No curriculum found
                                     </h5>
+
 
                                     <p className="text-muted mb-0">
                                         No courses or electives
@@ -1222,7 +1599,10 @@ function Curriculum() {
             )}
 
         </AdminLayout>
+
     );
+
 }
+
 
 export default Curriculum;
