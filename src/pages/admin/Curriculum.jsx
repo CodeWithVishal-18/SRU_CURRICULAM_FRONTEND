@@ -182,8 +182,6 @@ function Curriculum() {
                     departmentCode,
                     semester
                 );
-
-
             const curriculum =
                 response.data;
 
