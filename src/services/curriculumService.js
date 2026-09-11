@@ -42,14 +42,11 @@ export const selectElectives = async (
     regulationCode,
     departmentCode,
     semester,
-    selections
+    payload
 ) => {
-
     const response = await api.put(
         `/api/curriculum/${regulationCode}/${departmentCode}/${semester}/electives`,
-        {
-            selections
-        }
+        payload
     );
 
     return response.data;
