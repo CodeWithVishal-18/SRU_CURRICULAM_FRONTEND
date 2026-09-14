@@ -1,7 +1,7 @@
 import api from "./api";
 
 // =====================================================
-// NORMAL CURRICULUM
+// GET SEMESTER CURRICULUM WITH SYLLABUS DETAILS
 // =====================================================
 
 export const getSemesterCurriculum = async (
@@ -17,28 +17,10 @@ export const getSemesterCurriculum = async (
 };
 
 // =====================================================
-// CURRICULUM WITH SYLLABUS DETAILS
+// GET ELECTIVE SUBJECTS
 // =====================================================
 
-export const getCurriculumSyllabus = async (
-    regulationCode,
-    departmentCode,
-    semester
-) => {
-    const response = await api.get(
-        `/api/syllabi/curriculum/${regulationCode}/${departmentCode}/${semester}`
-    );
-
-    return response.data;
-};
-
-// =====================================================
-// ELECTIVE SUBJECTS
-// =====================================================
-
-export const getElectiveSubjects = async (
-    electiveGroupId
-) => {
+export const getElectiveSubjects = async (electiveGroupId) => {
     const response = await api.get(
         `/api/curriculum/elective/${electiveGroupId}/subjects`
     );
@@ -47,61 +29,30 @@ export const getElectiveSubjects = async (
 };
 
 // =====================================================
-// GET COURSE SYLLABUS STATUS
+// SUBMIT ELECTIVE SELECTIONS
 // =====================================================
 
-export const getCourseSyllabusStatus = async (
-    courseId
+export const selectElectives = async (
+    regulationCode,
+    departmentCode,
+    semester,
+    selections
 ) => {
-    const response = await api.get(
-        `/api/syllabi/course/${courseId}/status`
+    const response = await api.put(
+        `/api/curriculum/${regulationCode}/${departmentCode}/${semester}/electives`,
+        {
+            selections
+        }
     );
 
     return response.data;
-};
-
-// =====================================================
-// GET ELECTIVE SUBJECT SYLLABUS STATUS
-// =====================================================
-
-export const getElectiveSubjectSyllabusStatus = async (
-    electiveSubjectId
-) => {
-    const response = await api.get(
-        `/api/syllabi/elective-subject/${electiveSubjectId}/status`
-    );
-
-    return response.data;
-};
-
-// =====================================================
-// GET SYLLABUS DETAILS
-// =====================================================
-
-export const getSyllabus = async (syllabusId) => {
-    const response = await api.get(
-        `/api/syllabi/${syllabusId}`
-    );
-
-    return response.data;
-};
-
-// =====================================================
-// SYLLABUS FILE URL
-// =====================================================
-
-export const getSyllabusFileUrl = (syllabusId) => {
-    return `/api/syllabi/${syllabusId}/file`;
 };
 
 // =====================================================
 // UPLOAD COURSE SYLLABUS
 // =====================================================
 
-export const uploadCourseSyllabus = async (
-    courseId,
-    file
-) => {
+export const uploadCourseSyllabus = async (courseId, file) => {
     const formData = new FormData();
     formData.append("file", file);
 
@@ -110,8 +61,8 @@ export const uploadCourseSyllabus = async (
         formData,
         {
             headers: {
-                "Content-Type": "multipart/form-data",
-            },
+                "Content-Type": "multipart/form-data"
+            }
         }
     );
 
@@ -123,23 +74,55 @@ export const uploadCourseSyllabus = async (
 // =====================================================
 
 export const uploadElectiveSubjectSyllabus = async (
-    electiveSubjectId,
+    subjectId,
     file
 ) => {
     const formData = new FormData();
     formData.append("file", file);
 
     const response = await api.post(
-        `/api/syllabi/elective-subject/${electiveSubjectId}`,
+        `/api/syllabi/elective-subject/${subjectId}`,
         formData,
         {
             headers: {
-                "Content-Type": "multipart/form-data",
-            },
+                "Content-Type": "multipart/form-data"
+            }
         }
     );
 
     return response.data;
+};
+
+// =====================================================
+// GET COURSE SYLLABUS STATUS
+// =====================================================
+
+export const getCourseSyllabusStatus = async (courseId) => {
+    const response = await api.get(
+        `/api/syllabi/course/${courseId}/status`
+    );
+
+    return response.data;
+};
+
+// =====================================================
+// GET ELECTIVE SUBJECT SYLLABUS STATUS
+// =====================================================
+
+export const getElectiveSubjectSyllabusStatus = async (subjectId) => {
+    const response = await api.get(
+        `/api/syllabi/elective-subject/${subjectId}/status`
+    );
+
+    return response.data;
+};
+
+// =====================================================
+// GET SYLLABUS FILE URL
+// =====================================================
+
+export const getSyllabusFileUrl = (syllabusId) => {
+    return `/api/syllabi/${syllabusId}/file`;
 };
 
 // =====================================================
@@ -149,32 +132,14 @@ export const uploadElectiveSubjectSyllabus = async (
 export const updateSyllabusStatus = async (
     syllabusId,
     status,
-    remarks
+    rejectionReason = ""
 ) => {
     const response = await api.put(
         `/api/syllabi/${syllabusId}/status`,
         {
-            status,
-            remarks,
+            status: String(status).trim().toUpperCase(),
+            rejectionReason: String(rejectionReason || "").trim(),
         }
-    );
-
-    return response.data;
-};
-
-// =====================================================
-// SELECT ELECTIVES
-// =====================================================
-
-export const selectElectives = async (
-    regulationCode,
-    departmentCode,
-    semester,
-    payload
-) => {
-    const response = await api.put(
-        `/api/curriculum/${regulationCode}/${departmentCode}/${semester}/electives`,
-        payload
     );
 
     return response.data;

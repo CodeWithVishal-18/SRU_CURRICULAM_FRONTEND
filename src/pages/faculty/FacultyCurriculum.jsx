@@ -15,6 +15,8 @@ import {
     selectElectives,
     uploadCourseSyllabus,
     uploadElectiveSubjectSyllabus,
+    getCourseSyllabusStatus,
+    getElectiveSubjectSyllabusStatus,
     getSyllabusFileUrl,
 } from "../../services/curriculumService";
 
@@ -218,6 +220,95 @@ function FacultyCurriculum() {
     };
 
     // =========================================================
+    // FETCH PERSISTED SYLLABUS STATUS
+    // =========================================================
+
+    const attachCourseSyllabusStatus = async (courses = []) => {
+        return Promise.all(
+            courses.map(async (course) => {
+                try {
+                    const response = await getCourseSyllabusStatus(course.id);
+                    const data = response?.data || response || {};
+                    const syllabus = data?.syllabus || data?.syllabusDetails || null;
+
+                    return {
+                        ...course,
+                        syllabusId:
+                            data?.syllabusId ||
+                            syllabus?.id ||
+                            syllabus?.syllabusId ||
+                            course?.syllabusId ||
+                            null,
+                        syllabusStatus:
+                            data?.syllabusStatus ||
+                            data?.status ||
+                            syllabus?.status ||
+                            course?.syllabusStatus ||
+                            "NOT_UPLOADED",
+                        syllabus: syllabus || course?.syllabus || null,
+                        fileName:
+                            data?.fileName ||
+                            data?.originalFileName ||
+                            syllabus?.fileName ||
+                            syllabus?.originalFileName ||
+                            course?.fileName ||
+                            null,
+                    };
+                } catch (error) {
+                    // A missing syllabus must not prevent the curriculum from loading.
+                    return {
+                        ...course,
+                        syllabusStatus:
+                            course?.syllabusStatus || "NOT_UPLOADED",
+                    };
+                }
+            })
+        );
+    };
+
+    const attachElectiveSyllabusStatus = async (subjectsList = []) => {
+        return Promise.all(
+            subjectsList.map(async (subject) => {
+                try {
+                    const response = await getElectiveSubjectSyllabusStatus(subject.id);
+                    const data = response?.data || response || {};
+                    const syllabus = data?.syllabus || data?.syllabusDetails || null;
+
+                    return {
+                        ...subject,
+                        syllabusId:
+                            data?.syllabusId ||
+                            syllabus?.id ||
+                            syllabus?.syllabusId ||
+                            subject?.syllabusId ||
+                            null,
+                        syllabusStatus:
+                            data?.syllabusStatus ||
+                            data?.status ||
+                            syllabus?.status ||
+                            subject?.syllabusStatus ||
+                            "NOT_UPLOADED",
+                        syllabus: syllabus || subject?.syllabus || null,
+                        fileName:
+                            data?.fileName ||
+                            data?.originalFileName ||
+                            syllabus?.fileName ||
+                            syllabus?.originalFileName ||
+                            subject?.fileName ||
+                            null,
+                    };
+                } catch (error) {
+                    return {
+                        ...subject,
+                        syllabusStatus:
+                            subject?.syllabusStatus || "NOT_UPLOADED",
+                    };
+                }
+            })
+        );
+    };
+
+    // =========================================================
     // LOAD CURRICULUM
     // =========================================================
 
@@ -260,10 +351,15 @@ function FacultyCurriculum() {
                                     sem
                                 );
 
-                            return normalizeCurriculumResponse(
-                                response,
-                                sem
-                            );
+                            const normalized =
+                                normalizeCurriculumResponse(response, sem);
+
+                            normalized.courses =
+                                await attachCourseSyllabusStatus(
+                                    normalized.courses
+                                );
+
+                            return normalized;
                         } catch (error) {
                             console.error(
                                 `Failed to load Semester ${sem}:`,
@@ -314,6 +410,11 @@ function FacultyCurriculum() {
 
             const singleCurriculum =
                 normalizeCurriculumResponse(response, sem);
+
+            singleCurriculum.courses =
+                await attachCourseSyllabusStatus(
+                    singleCurriculum.courses
+                );
 
             setCurricula([singleCurriculum]);
 
@@ -372,9 +473,10 @@ function FacultyCurriculum() {
                     response ||
                     [];
 
-                subjectMap[group.id] = Array.isArray(data)
-                    ? data
-                    : [];
+                const subjectList = Array.isArray(data) ? data : [];
+
+                subjectMap[group.id] =
+                    await attachElectiveSyllabusStatus(subjectList);
             } catch (error) {
                 console.error(
                     `Failed to load subjects for group ${group.id}:`,
@@ -420,9 +522,7 @@ function FacultyCurriculum() {
                 [groupId]: true,
             }));
 
-            const response = await getElectiveSubjects(
-                groupId
-            );
+            const response = await getElectiveSubjects(groupId);
 
             const data =
                 response?.data ||
@@ -430,9 +530,23 @@ function FacultyCurriculum() {
                 response ||
                 [];
 
+            const subjectList = Array.isArray(data)
+                ? data
+                : [];
+
+            /*
+             * Fetch persisted syllabus status before updating state.
+             * The await must remain outside the setSubjects callback.
+             */
+            const subjectsWithSyllabusStatus =
+                await attachElectiveSyllabusStatus(subjectList);
+
+            /*
+             * Update subjects state using the already resolved data.
+             */
             setSubjects((previous) => ({
                 ...previous,
-                [groupId]: Array.isArray(data) ? data : [],
+                [groupId]: subjectsWithSyllabusStatus,
             }));
         } catch (error) {
             console.error(
@@ -662,7 +776,10 @@ function FacultyCurriculum() {
 
         return (
             syllabus?.id ||
+            syllabus?.syllabusId ||
             item?.syllabusId ||
+            item?.syllabusID ||
+            item?.uploadedSyllabusId ||
             null
         );
     };
@@ -670,12 +787,13 @@ function FacultyCurriculum() {
     const getSyllabusStatus = (item) => {
         const syllabus = getSyllabusObject(item);
 
-        return (
+        return String(
             syllabus?.status ||
+            syllabus?.syllabusStatus ||
             item?.syllabusStatus ||
             item?.status ||
             "NOT_UPLOADED"
-        );
+        ).toUpperCase();
     };
 
     const getStatusBadgeClass = (status) => {
@@ -1706,8 +1824,8 @@ function FacultyCurriculum() {
 
                                                             <div
                                                                 className={`p-3 ${open
-                                                                        ? "bg-warning-subtle"
-                                                                        : "bg-secondary-subtle"
+                                                                    ? "bg-warning-subtle"
+                                                                    : "bg-secondary-subtle"
                                                                     }`}
                                                             >
                                                                 <div className="d-flex align-items-center gap-2">
@@ -1734,8 +1852,8 @@ function FacultyCurriculum() {
                                                                     >
                                                                         <i
                                                                             className={`bi ${isExpanded
-                                                                                    ? "bi-chevron-up"
-                                                                                    : "bi-chevron-down"
+                                                                                ? "bi-chevron-up"
+                                                                                : "bi-chevron-down"
                                                                                 }`}
                                                                         ></i>
                                                                     </button>

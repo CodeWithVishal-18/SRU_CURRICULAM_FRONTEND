@@ -17,6 +17,8 @@ import {
     selectElectives,
     uploadCourseSyllabus,
     uploadElectiveSubjectSyllabus,
+    getCourseSyllabusStatus,
+    getElectiveSubjectSyllabusStatus,
     getSyllabusFileUrl,
     updateSyllabusStatus
 } from "../../services/curriculumService";
@@ -30,39 +32,27 @@ function Curriculum() {
     // BASIC DATA
     // =====================================================
 
-    const [regulations, setRegulations] =
-        useState([]);
+    const [regulations, setRegulations] = useState([]);
+    const [departments, setDepartments] = useState([]);
 
-    const [departments, setDepartments] =
-        useState([]);
-
-    const [regulationCode, setRegulationCode] =
-        useState("");
-
-    const [departmentCode, setDepartmentCode] =
-        useState("");
-
-    const [semester, setSemester] =
-        useState("");
+    const [regulationCode, setRegulationCode] = useState("");
+    const [departmentCode, setDepartmentCode] = useState("");
+    const [semester, setSemester] = useState("");
 
 
     // =====================================================
     // CURRICULUM
     // =====================================================
 
-    const [courses, setCourses] =
-        useState([]);
-
-    const [electives, setElectives] =
-        useState([]);
+    const [courses, setCourses] = useState([]);
+    const [electives, setElectives] = useState([]);
 
 
     // =====================================================
     // ELECTIVE SUBJECTS
     // =====================================================
 
-    const [subjects, setSubjects] =
-        useState({});
+    const [subjects, setSubjects] = useState({});
 
 
     // =====================================================
@@ -71,47 +61,31 @@ function Curriculum() {
     // groupId -> [subjectId, subjectId, ...]
     // =====================================================
 
-    const [selections, setSelections] =
-        useState({});
+    const [selections, setSelections] = useState({});
 
 
     // =====================================================
     // LOADING
     // =====================================================
 
-    const [initialLoading, setInitialLoading] =
-        useState(true);
+    const [initialLoading, setInitialLoading] = useState(true);
+    const [curriculumLoading, setCurriculumLoading] = useState(false);
+    const [subjectsLoading, setSubjectsLoading] = useState({});
+    const [saving, setSaving] = useState(false);
 
-    const [curriculumLoading, setCurriculumLoading] =
-        useState(false);
-
-    const [subjectsLoading, setSubjectsLoading] =
-        useState({});
-
-    const [saving, setSaving] =
-        useState(false);
 
     // =====================================================
     // ADMIN SYLLABUS REVIEW MODAL
     // =====================================================
 
-    const [selectedSyllabusItem, setSelectedSyllabusItem] =
-        useState(null);
+    const [selectedSyllabusItem, setSelectedSyllabusItem] = useState(null);
+    const [selectedSyllabusType, setSelectedSyllabusType] = useState("course");
+    const [selectedSyllabusFile, setSelectedSyllabusFile] = useState(null);
 
-    const [selectedSyllabusType, setSelectedSyllabusType] =
-        useState("course");
+    const [syllabusRemarks, setSyllabusRemarks] = useState("");
 
-    const [selectedSyllabusFile, setSelectedSyllabusFile] =
-        useState(null);
-
-    const [syllabusRemarks, setSyllabusRemarks] =
-        useState("");
-
-    const [syllabusUploading, setSyllabusUploading] =
-        useState(false);
-
-    const [syllabusStatusUpdating, setSyllabusStatusUpdating] =
-        useState(false);
+    const [syllabusUploading, setSyllabusUploading] = useState(false);
+    const [syllabusStatusUpdating, setSyllabusStatusUpdating] = useState(false);
 
 
     // =====================================================
@@ -134,18 +108,17 @@ function Curriculum() {
                     getAllDepartments()
                 ]);
 
-
                 setRegulations(
-                    regulationResponse.data || []
+                    regulationResponse?.data || []
                 );
 
                 setDepartments(
-                    departmentResponse.data || []
+                    departmentResponse?.data || []
                 );
 
             } catch (error) {
 
-                console.error(error);
+                console.error("Initial data loading error:", error);
 
                 toast.error(
                     "Failed to load regulations or departments"
@@ -156,8 +129,8 @@ function Curriculum() {
                 setInitialLoading(false);
 
             }
-        };
 
+        };
 
         loadData();
 
@@ -171,105 +144,136 @@ function Curriculum() {
     const handleLoadCurriculum = async () => {
 
         if (!regulationCode) {
-
-            toast.error(
-                "Please select a regulation"
-            );
-
+            toast.error("Please select a regulation");
             return;
         }
-
 
         if (!departmentCode) {
-
-            toast.error(
-                "Please select a department"
-            );
-
+            toast.error("Please select a department");
             return;
         }
-
 
         if (!semester) {
-
-            toast.error(
-                "Please select a semester"
-            );
-
+            toast.error("Please select a semester");
             return;
         }
-
 
         try {
 
             setCurriculumLoading(true);
 
-            const response =
-                await getSemesterCurriculum(
-                    regulationCode,
-                    departmentCode,
-                    semester
-                );
-            const curriculum =
-                response.data;
-
-
-            setCourses(
-                curriculum?.courses || []
+            const curriculumResponse = await getSemesterCurriculum(
+                regulationCode,
+                departmentCode,
+                semester
             );
 
+            const curriculum =
+                curriculumResponse?.data ||
+                curriculumResponse ||
+                {};
 
-            const groups =
-                curriculum?.electives || [];
+            const rawCourses = curriculum?.courses || [];
 
+            /*
+             * Load persistent syllabus status for every course.
+             */
+            const coursesWithSyllabusStatus = await Promise.all(
+                rawCourses.map(async (course) => {
+
+                    try {
+
+                        const statusResponse =
+                            await getCourseSyllabusStatus(course.id);
+
+                        const statusData =
+                            statusResponse?.data ||
+                            statusResponse ||
+                            {};
+
+                        const syllabusData =
+                            statusData?.syllabus ||
+                            course?.syllabus ||
+                            null;
+
+                        return {
+                            ...course,
+
+                            syllabusId:
+                                statusData?.syllabusId ||
+                                statusData?.id ||
+                                syllabusData?.id ||
+                                syllabusData?.syllabusId ||
+                                course?.syllabusId ||
+                                null,
+
+                            syllabusStatus:
+                                statusData?.syllabusStatus ||
+                                statusData?.status ||
+                                syllabusData?.status ||
+                                course?.syllabusStatus ||
+                                "NOT_UPLOADED",
+
+                            syllabus: syllabusData,
+
+                            fileName:
+                                statusData?.fileName ||
+                                statusData?.originalFileName ||
+                                syllabusData?.fileName ||
+                                syllabusData?.originalFileName ||
+                                course?.fileName ||
+                                null
+                        };
+
+                    } catch (statusError) {
+
+                        console.warn(
+                            `Unable to fetch syllabus status for course ${course.id}`,
+                            statusError
+                        );
+
+                        return {
+                            ...course,
+                            syllabusStatus:
+                                course?.syllabusStatus ||
+                                course?.syllabus?.status ||
+                                "NOT_UPLOADED"
+                        };
+
+                    }
+
+                })
+            );
+
+            setCourses(coursesWithSyllabusStatus);
+
+            const groups = curriculum?.electives || [];
 
             setElectives(groups);
 
 
             // -------------------------------------------------
             // SET EXISTING SELECTIONS
-            //
-            // Supports:
-            // selectedSubjects: [...]
-            //
-            // Also supports old:
-            // selectedSubject: {...}
             // -------------------------------------------------
 
             const existingSelections = {};
 
-
             groups.forEach((group) => {
 
-                // New response format
-                if (
-                    Array.isArray(
-                        group.selectedSubjects
-                    )
-                ) {
+                if (Array.isArray(group?.selectedSubjects)) {
 
                     existingSelections[group.id] =
                         group.selectedSubjects.map(
-                            subject =>
-                                Number(subject.id)
+                            (subject) => Number(subject.id)
                         );
 
-                }
-
-                // Backward compatibility
-                else if (
-                    group.selectedSubject
-                ) {
+                } else if (group?.selectedSubject) {
 
                     existingSelections[group.id] = [
-                        Number(
-                            group.selectedSubject.id
-                        )
+                        Number(group.selectedSubject.id)
                     ];
 
-                }
-
-                else {
+                } else {
 
                     existingSelections[group.id] = [];
 
@@ -277,47 +281,35 @@ function Curriculum() {
 
             });
 
-
-            setSelections(
-                existingSelections
-            );
+            setSelections(existingSelections);
 
 
             // -------------------------------------------------
             // LOAD SUBJECTS
             // -------------------------------------------------
 
-            await loadAllElectiveSubjects(
-                groups
-            );
-
+            await loadAllElectiveSubjects(groups);
 
         } catch (error) {
 
-            console.error(error);
+            console.error("Curriculum loading error:", error);
 
             toast.error(
-                error.response
-                    ?.data
-                    ?.message ||
+                error?.response?.data?.message ||
                 "Failed to load curriculum"
             );
 
-
             setCourses([]);
-
             setElectives([]);
-
             setSubjects({});
-
             setSelections({});
-
 
         } finally {
 
             setCurriculumLoading(false);
 
         }
+
     };
 
 
@@ -325,34 +317,96 @@ function Curriculum() {
     // LOAD SUBJECTS FOR ALL ELECTIVE GROUPS
     // =====================================================
 
-    const loadAllElectiveSubjects = async (
-        groups
-    ) => {
+    const loadAllElectiveSubjects = async (groups) => {
 
         const subjectData = {};
-
 
         for (const group of groups) {
 
             try {
 
-                setSubjectsLoading(
-                    previous => ({
-                        ...previous,
-                        [group.id]: true
+                setSubjectsLoading((previous) => ({
+                    ...previous,
+                    [group.id]: true
+                }));
+
+                const response = await getElectiveSubjects(group.id);
+
+                const groupSubjects =
+                    response?.data ||
+                    response ||
+                    [];
+
+                const subjectsWithSyllabusStatus = await Promise.all(
+                    groupSubjects.map(async (subject) => {
+
+                        try {
+
+                            const statusResponse =
+                                await getElectiveSubjectSyllabusStatus(
+                                    subject.id
+                                );
+
+                            const statusData =
+                                statusResponse?.data ||
+                                statusResponse ||
+                                {};
+
+                            const syllabusData =
+                                statusData?.syllabus ||
+                                subject?.syllabus ||
+                                null;
+
+                            return {
+                                ...subject,
+
+                                syllabusId:
+                                    statusData?.syllabusId ||
+                                    statusData?.id ||
+                                    syllabusData?.id ||
+                                    syllabusData?.syllabusId ||
+                                    subject?.syllabusId ||
+                                    null,
+
+                                syllabusStatus:
+                                    statusData?.syllabusStatus ||
+                                    statusData?.status ||
+                                    syllabusData?.status ||
+                                    subject?.syllabusStatus ||
+                                    "NOT_UPLOADED",
+
+                                syllabus: syllabusData,
+
+                                fileName:
+                                    statusData?.fileName ||
+                                    statusData?.originalFileName ||
+                                    syllabusData?.fileName ||
+                                    syllabusData?.originalFileName ||
+                                    subject?.fileName ||
+                                    null
+                            };
+
+                        } catch (statusError) {
+
+                            console.warn(
+                                `Unable to fetch syllabus status for elective subject ${subject.id}`,
+                                statusError
+                            );
+
+                            return {
+                                ...subject,
+                                syllabusStatus:
+                                    subject?.syllabusStatus ||
+                                    subject?.syllabus?.status ||
+                                    "NOT_UPLOADED"
+                            };
+
+                        }
+
                     })
                 );
 
-
-                const response =
-                    await getElectiveSubjects(
-                        group.id
-                    );
-
-
-                subjectData[group.id] =
-                    response.data || [];
-
+                subjectData[group.id] = subjectsWithSyllabusStatus;
 
             } catch (error) {
 
@@ -361,82 +415,58 @@ function Curriculum() {
                     error
                 );
 
-
                 subjectData[group.id] = [];
-
 
             } finally {
 
-                setSubjectsLoading(
-                    previous => ({
-                        ...previous,
-                        [group.id]: false
-                    })
-                );
+                setSubjectsLoading((previous) => ({
+                    ...previous,
+                    [group.id]: false
+                }));
 
             }
+
         }
 
-
-        setSubjects(
-            subjectData
-        );
+        setSubjects(subjectData);
 
     };
 
 
     // =====================================================
     // SELECT / DESELECT SUBJECT
-    //
-    // Multiple subjects allowed
     // =====================================================
 
-    const handleSelectionChange = (
-        electiveGroupId,
-        subjectId
-    ) => {
+    const handleSelectionChange = (electiveGroupId, subjectId) => {
 
-        const id =
-            Number(subjectId);
+        const id = Number(subjectId);
 
+        setSelections((previous) => {
 
-        setSelections(
-            previous => {
+            const current = previous[electiveGroupId] || [];
 
-                const current =
-                    previous[electiveGroupId] || [];
+            const alreadySelected = current.includes(id);
 
-
-                const alreadySelected =
-                    current.includes(id);
-
-
-                if (alreadySelected) {
-
-                    return {
-                        ...previous,
-
-                        [electiveGroupId]:
-                            current.filter(
-                                selectedId =>
-                                    selectedId !== id
-                            )
-                    };
-
-                }
-
+            if (alreadySelected) {
 
                 return {
                     ...previous,
-
-                    [electiveGroupId]: [
-                        ...current,
-                        id
-                    ]
+                    [electiveGroupId]: current.filter(
+                        (selectedId) => selectedId !== id
+                    )
                 };
 
             }
-        );
+
+            return {
+                ...previous,
+                [electiveGroupId]: [
+                    ...current,
+                    id
+                ]
+            };
+
+        });
 
     };
 
@@ -445,22 +475,17 @@ function Curriculum() {
     // CHECK SUBJECT
     // =====================================================
 
-    const isSubjectSelected = (
-        groupId,
-        subjectId
-    ) => {
+    const isSubjectSelected = (groupId, subjectId) => {
 
         return (
             selections[groupId] || []
-        ).includes(
-            Number(subjectId)
-        );
+        ).includes(Number(subjectId));
 
     };
 
 
     // =====================================================
-    // SUBMIT
+    // SUBMIT ELECTIVE SELECTIONS
     // =====================================================
 
     const handleSubmit = async () => {
@@ -479,79 +504,50 @@ function Curriculum() {
 
         }
 
-
-        // -------------------------------------------------
-        // CREATE COMPLETE SELECTION LIST
-        //
-        // Multiple subjects per group
-        // -------------------------------------------------
-
         const selectionList = [];
 
+        electives.forEach((group) => {
 
-        electives.forEach(
-            group => {
+            const selected = selections[group.id] || [];
 
-                const selected =
-                    selections[group.id] || [];
+            selected.forEach((subjectId) => {
 
+                selectionList.push({
+                    electiveGroupId: group.id,
+                    subjectId: subjectId
+                });
 
-                selected.forEach(
-                    subjectId => {
+            });
 
-                        selectionList.push({
-                            electiveGroupId:
-                                group.id,
-
-                            subjectId:
-                                subjectId
-                        });
-
-                    }
-                );
-
-            }
-        );
-
+        });
 
         try {
 
             setSaving(true);
 
-
-            const response =
-                await selectElectives(
-                    regulationCode,
-                    departmentCode,
-                    semester,
-                    selectionList
-                );
-
+            const response = await selectElectives(
+                regulationCode,
+                departmentCode,
+                semester,
+                selectionList
+            );
 
             toast.success(
-                response.message ||
+                response?.message ||
+                response?.data?.message ||
                 "Elective selections updated successfully"
             );
 
-
-            // -------------------------------------------------
-            // Reload curriculum
-            // -------------------------------------------------
-
             await handleLoadCurriculum();
-
 
         } catch (error) {
 
-            console.error(error);
+            console.error("Elective selection error:", error);
 
             toast.error(
-                error.response
-                    ?.data
-                    ?.message ||
+                error?.response?.data?.message ||
                 "Failed to update elective selections"
             );
-
 
         } finally {
 
@@ -566,181 +562,611 @@ function Curriculum() {
     // ADMIN SYLLABUS HELPERS
     // =====================================================
 
-    const getSyllabusObject = (item) =>
-        item?.syllabus || item?.syllabusDetails || item?.syllabusFile || null;
+    const getSyllabusObject = (item) => {
 
-    const getSyllabusId = (item) => {
-        const syllabus = getSyllabusObject(item);
-        return syllabus?.id || syllabus?.syllabusId || item?.syllabusId || item?.syllabusID || null;
+        return (
+            item?.syllabus ||
+            item?.syllabusResponse ||
+            item?.syllabusDetails ||
+            item?.syllabusFile ||
+            null
+        );
+
     };
+
+
+    /*
+     * Important:
+     * This must return the ID of the Syllabus table record.
+     * It must not return course.id or subject.id.
+     */
+    const getSyllabusId = (item) => {
+
+        const syllabus = getSyllabusObject(item);
+
+        return (
+            item?.syllabusId ||
+            item?.syllabusID ||
+            item?.uploadedSyllabusId ||
+            syllabus?.id ||
+            syllabus?.syllabusId ||
+            syllabus?.syllabusID ||
+            syllabus?.uploadedSyllabusId ||
+            null
+        );
+
+    };
+
 
     const getSyllabusStatus = (item) => {
+
         const syllabus = getSyllabusObject(item);
-        return String(
-            syllabus?.status || item?.syllabusStatus || item?.status || "NOT_UPLOADED"
-        ).toUpperCase();
+
+        const status =
+            item?.syllabusStatus ||
+            syllabus?.status ||
+            syllabus?.syllabusStatus ||
+            item?.status ||
+            "NOT_UPLOADED";
+
+        return String(status)
+            .trim()
+            .toUpperCase();
+
     };
+
 
     const getSyllabusStatusLabel = (status) => {
-        const labels = {
-            NOT_UPLOADED: "Not Uploaded",
-            UPLOADED: "Uploaded",
-            SUBMITTED: "Submitted",
-            PENDING: "Pending Review",
-            UNDER_REVIEW: "Under Review",
-            APPROVED: "Approved",
-            REJECTED: "Rejected"
-        };
-        return labels[String(status || "").toUpperCase()] || String(status || "Not Uploaded").replaceAll("_", " ");
+
+        const normalizedStatus = String(status || "")
+            .trim()
+            .toUpperCase();
+
+        switch (normalizedStatus) {
+
+            case "UPLOADED":
+                return "Pending Review";
+
+            case "APPROVED":
+                return "Approved";
+
+            case "REJECTED":
+                return "Rejected";
+
+            case "PENDING":
+            case "UNDER_REVIEW":
+                return "Pending Review";
+
+            case "NOT_UPLOADED":
+            default:
+                return "Not Uploaded";
+
+        }
+
     };
+
 
     const getSyllabusStatusClass = (status) => {
-        const value = String(status || "").toUpperCase();
-        if (value === "APPROVED") return "bg-success-subtle text-success";
-        if (value === "REJECTED") return "bg-danger-subtle text-danger";
-        if (["PENDING", "SUBMITTED", "UNDER_REVIEW"].includes(value)) return "bg-warning-subtle text-warning-emphasis";
-        if (value === "UPLOADED") return "bg-info-subtle text-info";
-        return "bg-secondary-subtle text-secondary";
+
+        const normalizedStatus = String(status || "")
+            .trim()
+            .toUpperCase();
+
+        switch (normalizedStatus) {
+
+            case "UPLOADED":
+                return "bg-warning text-dark";
+
+            case "APPROVED":
+                return "bg-success";
+
+            case "REJECTED":
+                return "bg-danger";
+
+            case "PENDING":
+            case "UNDER_REVIEW":
+                return "bg-warning text-dark";
+
+            case "NOT_UPLOADED":
+            default:
+                return "bg-secondary";
+
+        }
+
     };
 
+
     const openSyllabusEditor = (item, type = "course") => {
-        const syllabus = getSyllabusObject(item);
+
         setSelectedSyllabusItem(item);
         setSelectedSyllabusType(type);
         setSelectedSyllabusFile(null);
-        setSyllabusRemarks(syllabus?.remarks || syllabus?.reviewerComment || item?.remarks || "");
+
+        const syllabus = getSyllabusObject(item);
+
+        setSyllabusRemarks(
+            syllabus?.rejectionReason ||
+            syllabus?.remarks ||
+            syllabus?.reviewerComment ||
+            item?.rejectionReason ||
+            item?.remarks ||
+            item?.reviewerComment ||
+            ""
+        );
+
     };
 
+
     const closeSyllabusEditor = () => {
+
+        if (syllabusUploading || syllabusStatusUpdating) {
+            return;
+        }
+
         setSelectedSyllabusItem(null);
         setSelectedSyllabusType("course");
         setSelectedSyllabusFile(null);
         setSyllabusRemarks("");
+
     };
 
+
+    // =====================================================
+    // VIEW SYLLABUS
+    // =====================================================
+
     const handleViewSyllabus = async (item) => {
+
         const syllabusId = getSyllabusId(item);
+
         if (!syllabusId) {
             toast.error("Syllabus has not been uploaded yet");
             return;
         }
+
         try {
-            const response = await api.get(getSyllabusFileUrl(syllabusId), { responseType: "blob" });
-            const blobUrl = window.URL.createObjectURL(response.data);
-            window.open(blobUrl, "_blank");
-            setTimeout(() => window.URL.revokeObjectURL(blobUrl), 60000);
+
+            const response = await api.get(
+                getSyllabusFileUrl(syllabusId),
+                {
+                    responseType: "blob"
+                }
+            );
+
+            const blobUrl = window.URL.createObjectURL(
+                response.data
+            );
+
+            window.open(blobUrl, "_blank", "noopener,noreferrer");
+
+            setTimeout(() => {
+                window.URL.revokeObjectURL(blobUrl);
+            }, 60000);
+
         } catch (error) {
+
             console.error("View syllabus error:", error);
-            toast.error("Unable to open syllabus");
+
+            toast.error(
+                error?.response?.data?.message ||
+                "Unable to open syllabus"
+            );
+
         }
+
     };
+
+
+    // =====================================================
+    // UPDATE COURSE STATE
+    // =====================================================
 
     const updateCourseState = (updatedItem) => {
-        setCourses((previous) => previous.map((course) =>
-            Number(course.id) === Number(updatedItem.id) ? { ...course, ...updatedItem } : course
-        ));
+
+        setCourses((previous) =>
+            previous.map((course) =>
+                Number(course.id) === Number(updatedItem.id)
+                    ? {
+                        ...course,
+                        ...updatedItem
+                    }
+                    : course
+            )
+        );
+
     };
+
+
+    // =====================================================
+    // UPDATE ELECTIVE SUBJECT STATE
+    // =====================================================
 
     const updateElectiveSubjectState = (updatedItem) => {
+
         setSubjects((previous) => {
-            const next = { ...previous };
+
+            const next = {
+                ...previous
+            };
+
             Object.keys(next).forEach((groupId) => {
-                next[groupId] = (next[groupId] || []).map((subject) =>
-                    Number(subject.id) === Number(updatedItem.id) ? { ...subject, ...updatedItem } : subject
+
+                next[groupId] = (next[groupId] || []).map(
+                    (subject) =>
+                        Number(subject.id) === Number(updatedItem.id)
+                            ? {
+                                ...subject,
+                                ...updatedItem
+                            }
+                            : subject
                 );
+
             });
+
             return next;
+
         });
+
     };
 
+
+    // =====================================================
+    // FILE VALIDATION
+    // =====================================================
+
     const handleSyllabusFileChange = (event) => {
+
         const file = event.target.files?.[0];
+
         if (!file) return;
+
         const allowedTypes = [
             "application/pdf",
             "application/msword",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         ];
+
         if (!allowedTypes.includes(file.type)) {
-            toast.error("Only PDF, DOC, and DOCX files are allowed");
+
+            toast.error(
+                "Only PDF, DOC, and DOCX files are allowed"
+            );
+
             event.target.value = "";
             return;
+
         }
+
         if (file.size > 10 * 1024 * 1024) {
-            toast.error("File size must be less than 10 MB");
+
+            toast.error(
+                "File size must be less than 10 MB"
+            );
+
             event.target.value = "";
             return;
+
         }
+
         setSelectedSyllabusFile(file);
+
     };
+
+
+    // =====================================================
+    // ADMIN SYLLABUS UPLOAD
+    // =====================================================
 
     const handleAdminSyllabusUpload = async () => {
+
         if (!selectedSyllabusFile) {
+
             toast.error("Please select a syllabus file");
             return;
+
         }
+
         if (!selectedSyllabusItem?.id) {
+
             toast.error("Unable to identify the selected course");
             return;
+
         }
+
         try {
+
             setSyllabusUploading(true);
-            const response = selectedSyllabusType === "elective"
-                ? await uploadElectiveSubjectSyllabus(selectedSyllabusItem.id, selectedSyllabusFile)
-                : await uploadCourseSyllabus(selectedSyllabusItem.id, selectedSyllabusFile);
-            const uploaded = response?.data || response || {};
+
+            const response =
+                selectedSyllabusType === "elective"
+                    ? await uploadElectiveSubjectSyllabus(
+                        selectedSyllabusItem.id,
+                        selectedSyllabusFile
+                    )
+                    : await uploadCourseSyllabus(
+                        selectedSyllabusItem.id,
+                        selectedSyllabusFile
+                    );
+
+            const uploaded =
+                response?.data ||
+                response ||
+                {};
+
+            const uploadedSyllabus =
+                uploaded?.syllabus ||
+                uploaded?.syllabusDetails ||
+                uploaded;
+
+            const uploadedSyllabusId =
+                uploadedSyllabus?.id ||
+                uploadedSyllabus?.syllabusId ||
+                uploaded?.id ||
+                uploaded?.syllabusId ||
+                null;
+
             const updatedItem = {
+
                 ...selectedSyllabusItem,
-                syllabusId: uploaded.id || uploaded.syllabusId || selectedSyllabusItem.syllabusId,
-                syllabusStatus: uploaded.status || "PENDING",
-                syllabus: uploaded.id || uploaded.syllabusId ? uploaded : selectedSyllabusItem.syllabus
+
+                syllabusId:
+                    uploadedSyllabusId ||
+                    selectedSyllabusItem?.syllabusId ||
+                    null,
+
+                /*
+                 * Backend upload method sets the status to UPLOADED.
+                 */
+                syllabusStatus:
+                    uploadedSyllabus?.status ||
+                    uploaded?.status ||
+                    "UPLOADED",
+
+                fileName:
+                    uploadedSyllabus?.fileName ||
+                    uploadedSyllabus?.originalFileName ||
+                    uploaded?.fileName ||
+                    selectedSyllabusFile.name,
+
+                syllabus: {
+                    ...uploadedSyllabus,
+                    id:
+                        uploadedSyllabus?.id ||
+                        uploadedSyllabusId,
+                    syllabusId:
+                        uploadedSyllabus?.syllabusId ||
+                        uploadedSyllabusId,
+                    status:
+                        uploadedSyllabus?.status ||
+                        uploaded?.status ||
+                        "UPLOADED"
+                }
+
             };
-            if (selectedSyllabusType === "elective") updateElectiveSubjectState(updatedItem);
-            else updateCourseState(updatedItem);
+
+            if (selectedSyllabusType === "elective") {
+
+                updateElectiveSubjectState(updatedItem);
+
+            } else {
+
+                updateCourseState(updatedItem);
+
+            }
+
             setSelectedSyllabusItem(updatedItem);
             setSelectedSyllabusFile(null);
-            const input = document.getElementById("admin-syllabus-file");
-            if (input) input.value = "";
-            toast.success("Syllabus uploaded successfully");
+
+            const input = document.getElementById(
+                "admin-syllabus-file"
+            );
+
+            if (input) {
+                input.value = "";
+            }
+
+            toast.success(
+                "Syllabus uploaded successfully. It is now pending review."
+            );
+
         } catch (error) {
+
             console.error("Admin syllabus upload error:", error);
-            toast.error(error.response?.data?.message || "Failed to upload syllabus");
+
+            toast.error(
+                error?.response?.data?.message ||
+                "Failed to upload syllabus"
+            );
+
         } finally {
+
             setSyllabusUploading(false);
+
         }
+
     };
 
+
+    // =====================================================
+    // ADMIN APPROVE / REJECT SYLLABUS
+    // =====================================================
+
     const handleAdminSyllabusStatus = async (status) => {
+        if (!selectedSyllabusItem) {
+            toast.error("Please select a syllabus first");
+            return;
+        }
+
         const syllabusId = getSyllabusId(selectedSyllabusItem);
+
+        const normalizedStatus = String(status || "")
+            .trim()
+            .toUpperCase();
+
+        const rejectionReason = String(
+            syllabusRemarks || ""
+        ).trim();
+
         if (!syllabusId) {
-            toast.error("Upload a syllabus before changing its status");
+            toast.error("Syllabus ID is missing");
+            console.error(
+                "Syllabus ID missing from selected item:",
+                selectedSyllabusItem
+            );
             return;
         }
-        if (status === "REJECTED" && !syllabusRemarks.trim()) {
-            toast.error("Please enter a reviewer comment before rejecting");
+
+        if (
+            normalizedStatus !== "APPROVED" &&
+            normalizedStatus !== "REJECTED"
+        ) {
+            toast.error("Invalid syllabus status");
             return;
         }
+
+        const currentStatus = getSyllabusStatus(
+            selectedSyllabusItem
+        );
+
+        if (!["UPLOADED", "APPROVED"].includes(currentStatus)) {
+            toast.error("This syllabus cannot be updated.");
+            return;
+        }
+
+        if (
+            normalizedStatus === "REJECTED" &&
+            !rejectionReason
+        ) {
+            toast.error(
+                "Please enter a rejection reason before rejecting"
+            );
+            return;
+        }
+
         try {
             setSyllabusStatusUpdating(true);
-            const response = await updateSyllabusStatus(syllabusId, status, syllabusRemarks);
-            const updated = response?.data || response || {};
-            const updatedItem = {
-                ...selectedSyllabusItem,
-                syllabusStatus: updated.status || status,
-                syllabus: {
-                    ...(getSyllabusObject(selectedSyllabusItem) || {}),
-                    ...updated,
-                    status: updated.status || status,
-                    remarks: syllabusRemarks
+
+            // =====================================================
+            // APPROVE SYLLABUS
+            // =====================================================
+            if (normalizedStatus === "APPROVED") {
+                const response = await updateSyllabusStatus(
+                    syllabusId,
+                    "APPROVED",
+                    ""
+                );
+
+                const responseData =
+                    response?.data ||
+                    response ||
+                    {};
+
+                const existingSyllabus =
+                    getSyllabusObject(selectedSyllabusItem) ||
+                    {};
+
+                const updatedItem = {
+                    ...selectedSyllabusItem,
+
+                    syllabusId: syllabusId,
+
+                    syllabusStatus: "APPROVED",
+
+                    syllabus: {
+                        ...existingSyllabus,
+                        ...responseData,
+                        id:
+                            responseData?.id ||
+                            existingSyllabus?.id ||
+                            syllabusId,
+                        syllabusId:
+                            responseData?.syllabusId ||
+                            existingSyllabus?.syllabusId ||
+                            syllabusId,
+                        status: "APPROVED",
+                        rejectionReason: null,
+                        remarks: "",
+                        reviewerComment: ""
+                    }
+                };
+
+                if (selectedSyllabusType === "course") {
+                    updateCourseState(updatedItem);
+                } else {
+                    updateElectiveSubjectState(updatedItem);
                 }
-            };
-            if (selectedSyllabusType === "elective") updateElectiveSubjectState(updatedItem);
-            else updateCourseState(updatedItem);
-            setSelectedSyllabusItem(updatedItem);
-            toast.success(status === "APPROVED" ? "Syllabus approved successfully" : "Syllabus rejected successfully");
+
+                setSelectedSyllabusItem(updatedItem);
+
+                toast.success(
+                    "Syllabus approved successfully"
+                );
+
+                return;
+            }
+
+            // =====================================================
+            // REJECT AND DELETE SYLLABUS
+            // =====================================================
+            if (normalizedStatus === "REJECTED") {
+                const shouldReject = window.confirm(
+                    "Are you sure you want to reject this syllabus? The uploaded file and its database record will be deleted. The Dean/HOD will need to upload it again."
+                );
+
+                if (!shouldReject) {
+                    return;
+                }
+
+                await api.delete(
+                    `/syllabi/${syllabusId}/reject`,
+                    {
+                        data: {
+                            rejectionReason: rejectionReason
+                        }
+                    }
+                );
+
+                // Remove syllabus information from the selected course
+                // or elective subject, but keep the course/subject itself.
+                const clearedItem = {
+                    ...selectedSyllabusItem,
+                    syllabusId: null,
+                    syllabusStatus: "NOT_UPLOADED",
+                    fileName: null,
+                    syllabus: null
+                };
+
+                if (selectedSyllabusType === "course") {
+                    updateCourseState(clearedItem);
+                } else {
+                    updateElectiveSubjectState(clearedItem);
+                }
+
+                toast.success(
+                    "Syllabus rejected and deleted successfully. It can be uploaded again."
+                );
+
+                closeSyllabusEditor();
+            }
         } catch (error) {
-            console.error("Syllabus status update error:", error);
-            toast.error(error.response?.data?.message || "Failed to update syllabus status");
+            console.error(
+                "Syllabus approval/rejection failed:",
+                error
+            );
+
+            console.error(
+                "Backend response:",
+                error?.response?.data
+            );
+
+            toast.error(
+                error?.response?.data?.message ||
+                error?.response?.data?.error ||
+                `Failed to ${normalizedStatus === "REJECTED"
+                    ? "reject and delete"
+                    : "approve"
+                } syllabus`
+            );
         } finally {
             setSyllabusStatusUpdating(false);
         }
@@ -751,63 +1177,39 @@ function Curriculum() {
     // TOTAL COURSES
     // =====================================================
 
-    const totalCourses =
-        courses.length;
+    const totalCourses = courses.length;
 
 
     // =====================================================
     // NORMAL COURSE CREDITS
     // =====================================================
 
-    const totalCourseCredits =
-        courses.reduce(
-            (total, course) =>
-                total +
-                (
-                    Number(course.credits) || 0
-                ),
-            0
-        );
+    const totalCourseCredits = courses.reduce(
+        (total, course) =>
+            total + (Number(course.credits) || 0),
+        0
+    );
 
 
     // =====================================================
     // SELECTED ELECTIVE GROUPS
-    //
-    // IMPORTANT:
-    //
-    // Group L/T/P/C is counted ONCE.
-    //
-    // Even if:
-    //
-    // Group A -> 1 subject selected
-    // Group A -> 2 subjects selected
-    // Group A -> 10 subjects selected
-    //
-    // The group's slot contribution is counted once.
     // =====================================================
 
-    const selectedElectiveGroups =
-        electives.filter(
-            group =>
-                (
-                    selections[group.id] || []
-                ).length > 0
-        );
+    const selectedElectiveGroups = electives.filter(
+        (group) =>
+            (selections[group.id] || []).length > 0
+    );
 
 
     // =====================================================
     // ELECTIVE CREDITS
     // =====================================================
 
-    const totalElectiveCredits =
-        selectedElectiveGroups.reduce(
-            (total, group) =>
-                total +
-                (
-                    Number(group.credits) || 0
-                ),
-            0
-        );
+    const totalElectiveCredits = selectedElectiveGroups.reduce(
+        (total, group) =>
+            total + (Number(group.credits) || 0),
+        0
+    );
 
 
     // =====================================================
@@ -826,19 +1228,12 @@ function Curriculum() {
     const totalLecture =
         courses.reduce(
             (total, course) =>
-                total +
-                (
-                    Number(course.lecture) || 0
-                ),
+                total + (Number(course.lecture) || 0),
             0
-        )
-        +
+        ) +
         selectedElectiveGroups.reduce(
             (total, group) =>
-                total +
-                (
-                    Number(group.lecture) || 0
-                ),
+                total + (Number(group.lecture) || 0),
             0
         );
 
@@ -850,19 +1245,12 @@ function Curriculum() {
     const totalTutorial =
         courses.reduce(
             (total, course) =>
-                total +
-                (
-                    Number(course.tutorial) || 0
-                ),
+                total + (Number(course.tutorial) || 0),
             0
-        )
-        +
+        ) +
         selectedElectiveGroups.reduce(
             (total, group) =>
-                total +
-                (
-                    Number(group.tutorial) || 0
-                ),
+                total + (Number(group.tutorial) || 0),
             0
         );
 
@@ -874,19 +1262,12 @@ function Curriculum() {
     const totalPractical =
         courses.reduce(
             (total, course) =>
-                total +
-                (
-                    Number(course.practical) || 0
-                ),
+                total + (Number(course.practical) || 0),
             0
-        )
-        +
+        ) +
         selectedElectiveGroups.reduce(
             (total, group) =>
-                total +
-                (
-                    Number(group.practical) || 0
-                ),
+                total + (Number(group.practical) || 0),
             0
         );
 
@@ -903,38 +1284,18 @@ function Curriculum() {
     // CATEGORY LABEL
     // =====================================================
 
-    const getCategoryLabel = (
-        category
-    ) => {
+    const getCategoryLabel = (category) => {
 
         const labels = {
-
-            CORE:
-                "Core",
-
-            ELECTIVE:
-                "Elective",
-
-            BASIC_SCIENCE:
-                "Basic Science",
-
-            ENGINEERING_SCIENCE:
-                "Engineering Science",
-
-            HUMANITIES:
-                "Humanities",
-
-            LAB:
-                "Lab",
-
-            PROJECT:
-                "Project",
-
-            OTHER:
-                "Other"
-
+            CORE: "Core",
+            ELECTIVE: "Elective",
+            BASIC_SCIENCE: "Basic Science",
+            ENGINEERING_SCIENCE: "Engineering Science",
+            HUMANITIES: "Humanities",
+            LAB: "Lab",
+            PROJECT: "Project",
+            OTHER: "Other"
         };
-
 
         return (
             labels[category] ||
@@ -949,9 +1310,7 @@ function Curriculum() {
     // L-T-P
     // =====================================================
 
-    const getLTP = (
-        item
-    ) => {
+    const getLTP = (item) => {
 
         return (
             `${item.lecture ?? 0}-${item.tutorial ?? 0}-${item.practical ?? 0}`
@@ -965,13 +1324,14 @@ function Curriculum() {
     // =====================================================
 
     return (
+
         <>
 
             <AdminLayout>
 
                 {/* =================================================
-                HEADER
-            ================================================= */}
+                    HEADER
+                ================================================= */}
 
                 <div className="mb-4">
 
@@ -980,16 +1340,15 @@ function Curriculum() {
                     </h2>
 
                     <p className="text-muted mb-0">
-                        View courses and manage elective
-                        selections.
+                        View courses and manage elective selections.
                     </p>
 
                 </div>
 
 
                 {/* =================================================
-                INITIAL LOADING
-            ================================================= */}
+                    INITIAL LOADING
+                ================================================= */}
 
                 {initialLoading ? (
 
@@ -1012,15 +1371,14 @@ function Curriculum() {
                     <>
 
                         {/* =================================================
-                        FILTERS
-                    ================================================= */}
+                            FILTERS
+                        ================================================= */}
 
                         <div className="card border-0 shadow-sm mb-4">
 
                             <div className="card-body p-4">
 
                                 <div className="row g-3 align-items-end">
-
 
                                     {/* REGULATION */}
 
@@ -1051,21 +1409,14 @@ function Curriculum() {
                                                 Select Regulation
                                             </option>
 
-
                                             {regulations.map(
-                                                regulation => (
+                                                (regulation) => (
 
                                                     <option
-                                                        key={
-                                                            regulation.code
-                                                        }
-                                                        value={
-                                                            regulation.code
-                                                        }
+                                                        key={regulation.code}
+                                                        value={regulation.code}
                                                     >
-                                                        {
-                                                            regulation.code
-                                                        }
+                                                        {regulation.code}
                                                     </option>
 
                                                 )
@@ -1105,25 +1456,16 @@ function Curriculum() {
                                                 Select Department
                                             </option>
 
-
                                             {departments.map(
-                                                department => (
+                                                (department) => (
 
                                                     <option
-                                                        key={
-                                                            department.code
-                                                        }
-                                                        value={
-                                                            department.code
-                                                        }
+                                                        key={department.code}
+                                                        value={department.code}
                                                     >
-                                                        {
-                                                            department.name
-                                                        }
+                                                        {department.name}
                                                         {" ("}
-                                                        {
-                                                            department.code
-                                                        }
+                                                        {department.code}
                                                         {")"}
                                                     </option>
 
@@ -1164,20 +1506,18 @@ function Curriculum() {
                                                 Select
                                             </option>
 
+                                            {[1, 2, 3, 4, 5, 6, 7, 8].map(
+                                                (sem) => (
 
-                                            {[1, 2, 3, 4, 5, 6, 7, 8]
-                                                .map(
-                                                    sem => (
+                                                    <option
+                                                        key={sem}
+                                                        value={sem}
+                                                    >
+                                                        Semester {sem}
+                                                    </option>
 
-                                                        <option
-                                                            key={sem}
-                                                            value={sem}
-                                                        >
-                                                            Semester {sem}
-                                                        </option>
-
-                                                    )
-                                                )}
+                                                )
+                                            )}
 
                                         </select>
 
@@ -1189,20 +1529,15 @@ function Curriculum() {
                                     <div className="col-12 col-md-2">
 
                                         <button
+                                            type="button"
                                             className="btn btn-primary w-100"
-                                            onClick={
-                                                handleLoadCurriculum
-                                            }
-                                            disabled={
-                                                curriculumLoading
-                                            }
+                                            onClick={handleLoadCurriculum}
+                                            disabled={curriculumLoading}
                                         >
 
                                             {curriculumLoading ? (
 
-                                                <span
-                                                    className="spinner-border spinner-border-sm"
-                                                ></span>
+                                                <span className="spinner-border spinner-border-sm"></span>
 
                                             ) : (
 
@@ -1225,8 +1560,8 @@ function Curriculum() {
 
 
                         {/* =================================================
-                        CURRICULUM
-                    ================================================= */}
+                            CURRICULUM
+                        ================================================= */}
 
                         {(courses.length > 0 ||
                             electives.length > 0) && (
@@ -1234,13 +1569,10 @@ function Curriculum() {
                                 <>
 
                                     {/* =================================================
-                                SUMMARY
-                            ================================================= */}
+                                        SUMMARY
+                                    ================================================= */}
 
                                     <div className="row g-3 mb-4">
-
-
-                                        {/* TOTAL COURSES */}
 
                                         <div className="col-12 col-md-4">
 
@@ -1263,8 +1595,6 @@ function Curriculum() {
                                         </div>
 
 
-                                        {/* TOTAL CREDITS */}
-
                                         <div className="col-12 col-md-4">
 
                                             <div className="card border-0 shadow-sm">
@@ -1285,8 +1615,6 @@ function Curriculum() {
 
                                         </div>
 
-
-                                        {/* TOTAL LTP */}
 
                                         <div className="col-12 col-md-4">
 
@@ -1312,8 +1640,8 @@ function Curriculum() {
 
 
                                     {/* =================================================
-                                COURSES
-                            ================================================= */}
+                                        COURSES
+                                    ================================================= */}
 
                                     {courses.length > 0 && (
 
@@ -1326,7 +1654,6 @@ function Curriculum() {
                                                 </h5>
 
                                             </div>
-
 
                                             <div className="table-responsive">
 
@@ -1360,6 +1687,10 @@ function Curriculum() {
                                                                 Credits
                                                             </th>
 
+                                                            <th>
+                                                                Syllabus
+                                                            </th>
+
                                                             <th className="text-center">
                                                                 Actions
                                                             </th>
@@ -1368,93 +1699,104 @@ function Curriculum() {
 
                                                     </thead>
 
-
                                                     <tbody>
 
                                                         {courses.map(
-                                                            (
-                                                                course,
-                                                                index
-                                                            ) => (
+                                                            (course, index) => {
 
-                                                                <tr
-                                                                    key={
-                                                                        course.id
-                                                                    }
-                                                                >
+                                                                const courseStatus =
+                                                                    getSyllabusStatus(course);
 
-                                                                    <td className="px-4">
-                                                                        {
-                                                                            index + 1
-                                                                        }
-                                                                    </td>
+                                                                const courseSyllabusId =
+                                                                    getSyllabusId(course);
 
-                                                                    <td className="fw-semibold">
-                                                                        {
-                                                                            course.courseCode
-                                                                        }
-                                                                    </td>
+                                                                return (
 
-                                                                    <td>
-                                                                        {
-                                                                            course.courseName
-                                                                        }
-                                                                    </td>
+                                                                    <tr key={course.id}>
 
-                                                                    <td>
+                                                                        <td className="px-4">
+                                                                            {index + 1}
+                                                                        </td>
 
-                                                                        <span className="badge bg-primary-subtle text-primary">
+                                                                        <td className="fw-semibold">
+                                                                            {course.courseCode}
+                                                                        </td>
 
-                                                                            {
-                                                                                getCategoryLabel(
+                                                                        <td>
+                                                                            {course.courseName}
+                                                                        </td>
+
+                                                                        <td>
+
+                                                                            <span className="badge bg-primary-subtle text-primary">
+
+                                                                                {getCategoryLabel(
                                                                                     course.category
-                                                                                )
-                                                                            }
+                                                                                )}
 
-                                                                        </span>
+                                                                            </span>
 
-                                                                    </td>
+                                                                        </td>
 
-                                                                    <td>
-                                                                        {
-                                                                            getLTP(
-                                                                                course
-                                                                            )
-                                                                        }
-                                                                    </td>
+                                                                        <td>
+                                                                            {getLTP(course)}
+                                                                        </td>
 
-                                                                    <td className="fw-semibold">
-                                                                        {
-                                                                            course.credits
-                                                                        }
-                                                                    </td>
+                                                                        <td className="fw-semibold">
+                                                                            {course.credits}
+                                                                        </td>
 
-                                                                    <td className="text-center">
-                                                                        <div className="d-flex justify-content-center gap-2 flex-wrap">
-                                                                            <button
-                                                                                type="button"
-                                                                                className="btn btn-sm btn-primary"
-                                                                                onClick={() => openSyllabusEditor(course, "course")}
+                                                                        <td>
+
+                                                                            <span
+                                                                                className={`badge ${getSyllabusStatusClass(courseStatus)}`}
                                                                             >
-                                                                                <i className="bi bi-pencil-square me-1"></i>
-                                                                                Edit
-                                                                            </button>
+                                                                                {getSyllabusStatusLabel(
+                                                                                    courseStatus
+                                                                                )}
+                                                                            </span>
 
-                                                                            <button
-                                                                                type="button"
-                                                                                className="btn btn-sm btn-outline-secondary"
-                                                                                onClick={() => handleViewSyllabus(course)}
-                                                                                disabled={!getSyllabusId(course)}
-                                                                            >
-                                                                                <i className="bi bi-eye me-1"></i>
-                                                                                View
-                                                                            </button>
-                                                                        </div>
-                                                                    </td>
+                                                                        </td>
 
-                                                                </tr>
+                                                                        <td className="text-center">
 
-                                                            )
+                                                                            <div className="d-flex justify-content-center gap-2 flex-wrap">
+
+                                                                                <button
+                                                                                    type="button"
+                                                                                    className="btn btn-sm btn-primary"
+                                                                                    onClick={() =>
+                                                                                        openSyllabusEditor(
+                                                                                            course,
+                                                                                            "course"
+                                                                                        )
+                                                                                    }
+                                                                                >
+                                                                                    <i className="bi bi-pencil-square me-1"></i>
+                                                                                    Manage
+                                                                                </button>
+
+                                                                                <button
+                                                                                    type="button"
+                                                                                    className="btn btn-sm btn-outline-secondary"
+                                                                                    onClick={() =>
+                                                                                        handleViewSyllabus(course)
+                                                                                    }
+                                                                                    disabled={!courseSyllabusId}
+                                                                                >
+                                                                                    <i className="bi bi-eye me-1"></i>
+                                                                                    View
+                                                                                </button>
+
+                                                                            </div>
+
+                                                                        </td>
+
+                                                                    </tr>
+
+                                                                );
+
+                                                            }
                                                         )}
 
                                                     </tbody>
@@ -1469,8 +1811,8 @@ function Curriculum() {
 
 
                                     {/* =================================================
-                                ELECTIVES
-                            ================================================= */}
+                                        ELECTIVES
+                                    ================================================= */}
 
                                     {electives.length > 0 && (
 
@@ -1487,9 +1829,7 @@ function Curriculum() {
                                                         </h5>
 
                                                         <small className="text-muted">
-                                                            You can select multiple
-                                                            subjects from an elective
-                                                            group.
+                                                            You can select multiple subjects from an elective group.
                                                         </small>
 
                                                     </div>
@@ -1501,296 +1841,257 @@ function Curriculum() {
 
                                             <div className="card-body">
 
+                                                {electives.map((group) => {
 
-                                                {electives.map(
-                                                    (group) => {
+                                                    const groupSubjects =
+                                                        subjects[group.id] || [];
 
-                                                        const groupSubjects =
-                                                            subjects[group.id] ||
-                                                            [];
+                                                    const loading =
+                                                        subjectsLoading[group.id];
 
+                                                    const selectedIds =
+                                                        selections[group.id] || [];
 
-                                                        const loading =
-                                                            subjectsLoading[
-                                                            group.id
-                                                            ];
+                                                    return (
 
+                                                        <div
+                                                            key={group.id}
+                                                            className="border rounded-3 p-3 mb-3"
+                                                        >
 
-                                                        const selectedIds =
-                                                            selections[
-                                                            group.id
-                                                            ] || [];
+                                                            {/* GROUP HEADER */}
 
+                                                            <div className="d-flex flex-column flex-md-row justify-content-between mb-3">
 
-                                                        return (
+                                                                <div>
 
-                                                            <div
-                                                                key={
-                                                                    group.id
-                                                                }
-                                                                className="border rounded-3 p-3 mb-3"
-                                                            >
+                                                                    <h6 className="fw-bold mb-1">
+                                                                        {group.name}
+                                                                    </h6>
 
+                                                                    <small className="text-muted">
 
-                                                                {/* GROUP HEADER */}
+                                                                        {group.electiveType}
 
-                                                                <div className="d-flex flex-column flex-md-row justify-content-between mb-3">
+                                                                        {" • "}
 
-                                                                    <div>
+                                                                        L-T-P:{" "}
+                                                                        {getLTP(group)}
 
-                                                                        <h6 className="fw-bold mb-1">
-                                                                            {
-                                                                                group.name
-                                                                            }
-                                                                        </h6>
+                                                                        {" • "}
 
-                                                                        <small className="text-muted">
+                                                                        Credits:{" "}
+                                                                        {group.credits}
 
-                                                                            {
-                                                                                group.electiveType
-                                                                            }
-
-                                                                            {" • "}
-
-                                                                            L-T-P:
-                                                                            {" "}
-
-                                                                            {
-                                                                                getLTP(
-                                                                                    group
-                                                                                )
-                                                                            }
-
-                                                                            {" • "}
-
-                                                                            Credits:
-                                                                            {" "}
-
-                                                                            {
-                                                                                group.credits
-                                                                            }
-
-                                                                        </small>
-
-                                                                    </div>
-
-
-                                                                    {selectedIds.length > 0 && (
-
-                                                                        <span className="badge bg-success-subtle text-success mt-2 mt-md-0">
-
-                                                                            <i className="bi bi-check-circle me-1"></i>
-
-                                                                            {
-                                                                                selectedIds.length
-                                                                            }
-
-                                                                            {" "}
-                                                                            selected
-
-                                                                        </span>
-
-                                                                    )}
+                                                                    </small>
 
                                                                 </div>
 
+                                                                {selectedIds.length > 0 && (
 
-                                                                {/* SUBJECTS */}
+                                                                    <span className="badge bg-success-subtle text-success mt-2 mt-md-0">
 
-                                                                {loading ? (
+                                                                        <i className="bi bi-check-circle me-1"></i>
 
-                                                                    <div className="text-muted small">
+                                                                        {selectedIds.length}
+                                                                        {" "}
+                                                                        selected
 
-                                                                        <span
-                                                                            className="spinner-border spinner-border-sm me-2"
-                                                                        ></span>
-
-                                                                        Loading subjects...
-
-                                                                    </div>
-
-                                                                ) : groupSubjects.length === 0 ? (
-
-                                                                    <div className="alert alert-light border mb-0">
-
-                                                                        No elective subjects
-                                                                        available.
-
-                                                                    </div>
-
-                                                                ) : (
-
-                                                                    <div className="row g-2">
-
-                                                                        {groupSubjects.map(
-                                                                            subject => (
-
-                                                                                <div
-                                                                                    key={
-                                                                                        subject.id
-                                                                                    }
-                                                                                    className="col-12 col-md-6"
-                                                                                >
-
-                                                                                    <div
-                                                                                        className={
-                                                                                            `form-check border rounded-3 p-3 ps-5 ${isSubjectSelected(
-                                                                                                group.id,
-                                                                                                subject.id
-                                                                                            )
-                                                                                                ? "border-primary bg-primary-subtle"
-                                                                                                : ""
-                                                                                            }`
-                                                                                        }
-                                                                                    >
-
-                                                                                        <input
-                                                                                            className="form-check-input"
-                                                                                            type="checkbox"
-                                                                                            id={
-                                                                                                `subject-${group.id}-${subject.id}`
-                                                                                            }
-                                                                                            checked={
-                                                                                                isSubjectSelected(
-                                                                                                    group.id,
-                                                                                                    subject.id
-                                                                                                )
-                                                                                            }
-                                                                                            onChange={() =>
-                                                                                                handleSelectionChange(
-                                                                                                    group.id,
-                                                                                                    subject.id
-                                                                                                )
-                                                                                            }
-                                                                                        />
-
-
-                                                                                        <label
-                                                                                            className="form-check-label w-100"
-                                                                                            htmlFor={
-                                                                                                `subject-${group.id}-${subject.id}`
-                                                                                            }
-                                                                                            style={{
-                                                                                                cursor:
-                                                                                                    "pointer"
-                                                                                            }}
-                                                                                        >
-
-                                                                                            <div className="fw-semibold">
-
-                                                                                                {
-                                                                                                    subject.courseCode
-                                                                                                }
-
-                                                                                                {" - "}
-
-                                                                                                {
-                                                                                                    subject.courseName
-                                                                                                }
-
-                                                                                            </div>
-
-
-                                                                                            <small className="text-muted">
-
-                                                                                                L-T-P:
-                                                                                                {" "}
-
-                                                                                                {
-                                                                                                    getLTP(
-                                                                                                        subject
-                                                                                                    )
-                                                                                                }
-
-                                                                                                {" • "}
-
-                                                                                                Credits:
-                                                                                                {" "}
-
-                                                                                                {
-                                                                                                    subject.credits
-                                                                                                }
-
-                                                                                            </small>
-
-
-
-                                                                                            <div className="d-flex gap-2 mt-3">
-                                                                                                <button
-                                                                                                    type="button"
-                                                                                                    className="btn btn-sm btn-primary"
-                                                                                                    onClick={(event) => {
-                                                                                                        event.preventDefault();
-                                                                                                        event.stopPropagation();
-                                                                                                        openSyllabusEditor(subject, "elective");
-                                                                                                    }}
-                                                                                                >
-                                                                                                    <i className="bi bi-pencil-square me-1"></i>
-                                                                                                    Edit
-                                                                                                </button>
-
-                                                                                                <button
-                                                                                                    type="button"
-                                                                                                    className="btn btn-sm btn-outline-secondary"
-                                                                                                    onClick={(event) => {
-                                                                                                        event.preventDefault();
-                                                                                                        event.stopPropagation();
-                                                                                                        handleViewSyllabus(subject);
-                                                                                                    }}
-                                                                                                    disabled={!getSyllabusId(subject)}
-                                                                                                >
-                                                                                                    <i className="bi bi-eye me-1"></i>
-                                                                                                    View
-                                                                                                </button>
-                                                                                            </div>
-                                                                                        </label>
-
-                                                                                    </div>
-
-                                                                                </div>
-
-                                                                            )
-                                                                        )}
-
-                                                                    </div>
+                                                                    </span>
 
                                                                 )}
 
                                                             </div>
 
-                                                        );
 
-                                                    }
-                                                )}
+                                                            {/* SUBJECTS */}
+
+                                                            {loading ? (
+
+                                                                <div className="text-muted small">
+
+                                                                    <span className="spinner-border spinner-border-sm me-2"></span>
+
+                                                                    Loading subjects...
+
+                                                                </div>
+
+                                                            ) : groupSubjects.length === 0 ? (
+
+                                                                <div className="alert alert-light border mb-0">
+                                                                    No elective subjects available.
+                                                                </div>
+
+                                                            ) : (
+
+                                                                <div className="row g-2">
+
+                                                                    {groupSubjects.map((subject) => {
+
+                                                                        const subjectStatus =
+                                                                            getSyllabusStatus(subject);
+
+                                                                        const subjectSyllabusId =
+                                                                            getSyllabusId(subject);
+
+                                                                        return (
+
+                                                                            <div
+                                                                                key={subject.id}
+                                                                                className="col-12 col-md-6"
+                                                                            >
+
+                                                                                <div
+                                                                                    className={
+                                                                                        `form-check border rounded-3 p-3 ps-5 ${isSubjectSelected(
+                                                                                            group.id,
+                                                                                            subject.id
+                                                                                        )
+                                                                                            ? "border-primary bg-primary-subtle"
+                                                                                            : ""
+                                                                                        }`
+                                                                                    }
+                                                                                >
+
+                                                                                    <input
+                                                                                        className="form-check-input"
+                                                                                        type="checkbox"
+                                                                                        id={`subject-${group.id}-${subject.id}`}
+                                                                                        checked={isSubjectSelected(
+                                                                                            group.id,
+                                                                                            subject.id
+                                                                                        )}
+                                                                                        onChange={() =>
+                                                                                            handleSelectionChange(
+                                                                                                group.id,
+                                                                                                subject.id
+                                                                                            )
+                                                                                        }
+                                                                                    />
+
+                                                                                    <label
+                                                                                        className="form-check-label w-100"
+                                                                                        htmlFor={`subject-${group.id}-${subject.id}`}
+                                                                                        style={{
+                                                                                            cursor: "pointer"
+                                                                                        }}
+                                                                                    >
+
+                                                                                        <div className="fw-semibold">
+
+                                                                                            {subject.courseCode}
+                                                                                            {" - "}
+                                                                                            {subject.courseName}
+
+                                                                                        </div>
+
+                                                                                        <small className="text-muted">
+
+                                                                                            L-T-P:
+                                                                                            {" "}
+                                                                                            {getLTP(subject)}
+
+                                                                                            {" • "}
+
+                                                                                            Credits:
+                                                                                            {" "}
+                                                                                            {subject.credits}
+
+                                                                                        </small>
+
+                                                                                        <div className="mt-2">
+
+                                                                                            <span
+                                                                                                className={`badge ${getSyllabusStatusClass(subjectStatus)}`}
+                                                                                            >
+                                                                                                {getSyllabusStatusLabel(
+                                                                                                    subjectStatus
+                                                                                                )}
+                                                                                            </span>
+
+                                                                                        </div>
+
+                                                                                        <div className="d-flex gap-2 mt-3">
+
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                className="btn btn-sm btn-primary"
+                                                                                                onClick={(event) => {
+
+                                                                                                    event.preventDefault();
+                                                                                                    event.stopPropagation();
+
+                                                                                                    openSyllabusEditor(
+                                                                                                        subject,
+                                                                                                        "elective"
+                                                                                                    );
+
+                                                                                                }}
+                                                                                            >
+                                                                                                <i className="bi bi-pencil-square me-1"></i>
+                                                                                                Manage
+                                                                                            </button>
+
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                className="btn btn-sm btn-outline-secondary"
+                                                                                                onClick={(event) => {
+
+                                                                                                    event.preventDefault();
+                                                                                                    event.stopPropagation();
+
+                                                                                                    handleViewSyllabus(subject);
+
+                                                                                                }}
+                                                                                                disabled={!subjectSyllabusId}
+                                                                                            >
+                                                                                                <i className="bi bi-eye me-1"></i>
+                                                                                                View
+                                                                                            </button>
+
+                                                                                        </div>
+
+                                                                                    </label>
+
+                                                                                </div>
+
+                                                                            </div>
+
+                                                                        );
+
+                                                                    })}
+
+                                                                </div>
+
+                                                            )}
+
+                                                        </div>
+
+                                                    );
+
+                                                })}
 
                                             </div>
 
 
-                                            {/* =================================================
-                                        SUBMIT
-                                    ================================================= */}
+                                            {/* SUBMIT */}
 
                                             <div className="card-footer bg-white border-top p-3">
 
                                                 <div className="d-flex justify-content-end">
 
                                                     <button
+                                                        type="button"
                                                         className="btn btn-primary px-4"
-                                                        onClick={
-                                                            handleSubmit
-                                                        }
-                                                        disabled={
-                                                            saving
-                                                        }
+                                                        onClick={handleSubmit}
+                                                        disabled={saving}
                                                     >
 
                                                         {saving ? (
 
                                                             <>
 
-                                                                <span
-                                                                    className="spinner-border spinner-border-sm me-2"
-                                                                ></span>
+                                                                <span className="spinner-border spinner-border-sm me-2"></span>
 
                                                                 Saving...
 
@@ -1824,8 +2125,8 @@ function Curriculum() {
 
 
                         {/* =================================================
-                        EMPTY STATE
-                    ================================================= */}
+                            EMPTY STATE
+                        ================================================= */}
 
                         {!curriculumLoading &&
                             courses.length === 0 &&
@@ -1845,16 +2146,12 @@ function Curriculum() {
                                             }}
                                         ></i>
 
-
                                         <h5 className="mt-3">
                                             No curriculum found
                                         </h5>
 
-
                                         <p className="text-muted mb-0">
-                                            No courses or electives
-                                            were found for the
-                                            selected semester.
+                                            No courses or electives were found for the selected semester.
                                         </p>
 
                                     </div>
@@ -1870,134 +2167,446 @@ function Curriculum() {
             </AdminLayout>
 
 
-        // {/* =====================================================
-        //     ADMIN SYLLABUS EDIT / REVIEW MODAL
-        // ===================================================== */}
+            {/* {/* ===================================================== */}
+            {/* ADMIN SYLLABUS EDIT / REVIEW MODAL */}
+            {/* // ===================================================== */}
 
-            {
-                selectedSyllabusItem && (
-                    <>
-                        <div className="modal-backdrop fade show" style={{ zIndex: 1040 }}></div>
+            {selectedSyllabusItem && (
 
-                        <div className="modal fade show d-block" tabIndex="-1" role="dialog" style={{ zIndex: 1050, backgroundColor: "rgba(0, 0, 0, 0.15)" }}>
-                            <div className="modal-dialog modal-xl modal-dialog-scrollable modal-dialog-centered">
-                                <div className="modal-content rounded-4 border-0 shadow">
-                                    <div className="modal-header border-0 px-4 pt-4 pb-2">
-                                        <div className="pe-4">
-                                            <h2 className="fw-bold mb-2">
-                                                {selectedSyllabusItem.courseName || selectedSyllabusItem.subjectName || selectedSyllabusItem.title || "Course Details"}
-                                            </h2>
-                                            <div className="text-muted small">
-                                                {regulationCode || "—"}
-                                                <span className="mx-2">·</span>
-                                                {departmentCode || "—"}
-                                                <span className="mx-2">·</span>
-                                                Sem {semester || "—"}
-                                                <span className="mx-2">·</span>
-                                                {selectedSyllabusItem.courseCode || selectedSyllabusItem.subjectCode || "—"}
-                                            </div>
+                <>
+
+                    <div
+                        className="modal-backdrop fade show"
+                        style={{
+                            zIndex: 1040
+                        }}
+                    ></div>
+
+                    <div
+                        className="modal fade show d-block"
+                        tabIndex="-1"
+                        role="dialog"
+                        style={{
+                            zIndex: 1050,
+                            backgroundColor: "rgba(0, 0, 0, 0.15)"
+                        }}
+                    >
+
+                        <div className="modal-dialog modal-xl modal-dialog-scrollable modal-dialog-centered">
+
+                            <div className="modal-content rounded-4 border-0 shadow">
+
+                                <div className="modal-header border-0 px-4 pt-4 pb-2">
+
+                                    <div className="pe-4">
+
+                                        <h2 className="fw-bold mb-2">
+
+                                            {selectedSyllabusItem.courseName ||
+                                                selectedSyllabusItem.subjectName ||
+                                                selectedSyllabusItem.title ||
+                                                "Course Details"}
+
+                                        </h2>
+
+                                        <div className="text-muted small">
+
+                                            {regulationCode || "—"}
+
+                                            <span className="mx-2">·</span>
+
+                                            {departmentCode || "—"}
+
+                                            <span className="mx-2">·</span>
+
+                                            Sem {semester || "—"}
+
+                                            <span className="mx-2">·</span>
+
+                                            {selectedSyllabusItem.courseCode ||
+                                                selectedSyllabusItem.subjectCode ||
+                                                "—"}
+
                                         </div>
-                                        <button type="button" className="btn-close" onClick={closeSyllabusEditor} aria-label="Close"></button>
+
                                     </div>
 
-                                    <div className="modal-body px-4 pb-4">
-                                        <div className="row g-4 mb-4">
-                                            <div className="col-md-8">
-                                                <label className="form-label fw-bold text-uppercase small text-secondary">Course Title</label>
-                                                <input type="text" className="form-control form-control-lg" value={selectedSyllabusItem.courseName || selectedSyllabusItem.subjectName || selectedSyllabusItem.title || ""} readOnly />
-                                            </div>
-                                            <div className="col-md-4">
-                                                <label className="form-label fw-bold text-uppercase small text-secondary">Course Code</label>
-                                                <input type="text" className="form-control form-control-lg" value={selectedSyllabusItem.courseCode || selectedSyllabusItem.subjectCode || ""} readOnly />
-                                            </div>
-                                            <div className="col-md-6">
-                                                <label className="form-label fw-bold text-uppercase small text-secondary">Department</label>
-                                                <input type="text" className="form-control form-control-lg" value={departmentCode || ""} readOnly />
-                                            </div>
-                                            <div className="col-md-6">
-                                                <label className="form-label fw-bold text-uppercase small text-secondary">Current Status</label>
-                                                <div className="form-control form-control-lg bg-light d-flex align-items-center">
-                                                    <span className={`badge ${getSyllabusStatusClass(getSyllabusStatus(selectedSyllabusItem))} px-3 py-2`}>
-                                                        {getSyllabusStatusLabel(getSyllabusStatus(selectedSyllabusItem))}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
+                                    <button
+                                        type="button"
+                                        className="btn-close"
+                                        onClick={closeSyllabusEditor}
+                                        aria-label="Close"
+                                    ></button>
 
-                                        <hr />
+                                </div>
 
-                                        <div className="mt-4">
-                                            <div className="d-flex justify-content-between align-items-center mb-3">
-                                                <h4 className="fw-bold mb-0">Syllabus</h4>
-                                                <span className={`badge ${getSyllabusStatusClass(getSyllabusStatus(selectedSyllabusItem))} px-3 py-2`}>
-                                                    {getSyllabusStatusLabel(getSyllabusStatus(selectedSyllabusItem))}
-                                                </span>
-                                            </div>
 
-                                            {getSyllabusId(selectedSyllabusItem) ? (
-                                                <div className="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-2">
-                                                    <div>
-                                                        Current file: <strong>{getSyllabusObject(selectedSyllabusItem)?.fileName || getSyllabusObject(selectedSyllabusItem)?.originalFileName || selectedSyllabusItem.fileName || "Syllabus file"}</strong>
-                                                    </div>
-                                                    <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => handleViewSyllabus(selectedSyllabusItem)}>
-                                                        <i className="bi bi-eye me-1"></i>
-                                                        View / Download
-                                                    </button>
-                                                </div>
-                                            ) : (
-                                                <div className="alert alert-secondary">No syllabus has been uploaded yet.</div>
-                                            )}
+                                <div className="modal-body px-4 pb-4">
 
-                                            <label htmlFor="admin-syllabus-file" className="border rounded-3 p-4 text-center d-block" style={{ cursor: "pointer", borderStyle: "dashed", backgroundColor: "#fcfbf7" }}>
-                                                <i className="bi bi-cloud-arrow-up fs-2 text-primary"></i>
-                                                <div className="mt-2 text-muted">
-                                                    {selectedSyllabusFile ? selectedSyllabusFile.name : "Click to upload or replace syllabus"}
-                                                </div>
-                                                <small className="text-muted">Supported formats: PDF, DOC, DOCX. Maximum size 10 MB.</small>
+                                    <div className="row g-4 mb-4">
+
+                                        <div className="col-md-8">
+
+                                            <label className="form-label fw-bold text-uppercase small text-secondary">
+                                                Course Title
                                             </label>
 
-                                            <input id="admin-syllabus-file" type="file" className="d-none" accept=".pdf,.doc,.docx" onChange={handleSyllabusFileChange} />
+                                            <input
+                                                type="text"
+                                                className="form-control form-control-lg"
+                                                value={
+                                                    selectedSyllabusItem.courseName ||
+                                                    selectedSyllabusItem.subjectName ||
+                                                    selectedSyllabusItem.title ||
+                                                    ""
+                                                }
+                                                readOnly
+                                            />
 
-                                            <button type="button" className="btn btn-primary mt-3" onClick={handleAdminSyllabusUpload} disabled={syllabusUploading || !selectedSyllabusFile}>
-                                                {syllabusUploading ? (
-                                                    <>
-                                                        <span className="spinner-border spinner-border-sm me-2"></span>
-                                                        Uploading...
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <i className="bi bi-upload me-2"></i>
-                                                        {getSyllabusId(selectedSyllabusItem) ? "Replace Syllabus" : "Upload Syllabus"}
-                                                    </>
+                                        </div>
+
+
+                                        <div className="col-md-4">
+
+                                            <label className="form-label fw-bold text-uppercase small text-secondary">
+                                                Course Code
+                                            </label>
+
+                                            <input
+                                                type="text"
+                                                className="form-control form-control-lg"
+                                                value={
+                                                    selectedSyllabusItem.courseCode ||
+                                                    selectedSyllabusItem.subjectCode ||
+                                                    ""
+                                                }
+                                                readOnly
+                                            />
+
+                                        </div>
+
+
+                                        <div className="col-md-6">
+
+                                            <label className="form-label fw-bold text-uppercase small text-secondary">
+                                                Department
+                                            </label>
+
+                                            <input
+                                                type="text"
+                                                className="form-control form-control-lg"
+                                                value={departmentCode || ""}
+                                                readOnly
+                                            />
+
+                                        </div>
+
+
+                                        <div className="col-md-6">
+
+                                            <label className="form-label fw-bold text-uppercase small text-secondary">
+                                                Current Status
+                                            </label>
+
+                                            <div className="form-control form-control-lg bg-light d-flex align-items-center">
+
+                                                <span
+                                                    className={`badge ${getSyllabusStatusClass(
+                                                        getSyllabusStatus(selectedSyllabusItem)
+                                                    )} px-3 py-2`}
+                                                >
+                                                    {getSyllabusStatusLabel(
+                                                        getSyllabusStatus(selectedSyllabusItem)
+                                                    )}
+                                                </span>
+
+                                            </div>
+
+                                        </div>
+
+                                    </div>
+
+
+                                    <hr />
+
+
+                                    <div className="mt-4">
+
+                                        <div className="d-flex justify-content-between align-items-center mb-3">
+
+                                            <h4 className="fw-bold mb-0">
+                                                Syllabus
+                                            </h4>
+
+                                            <span
+                                                className={`badge ${getSyllabusStatusClass(
+                                                    getSyllabusStatus(selectedSyllabusItem)
+                                                )} px-3 py-2`}
+                                            >
+                                                {getSyllabusStatusLabel(
+                                                    getSyllabusStatus(selectedSyllabusItem)
                                                 )}
-                                            </button>
+                                            </span>
+
                                         </div>
 
-                                        <hr className="my-4" />
 
-                                        <div className="mb-4">
-                                            <label className="form-label fw-bold text-uppercase small text-secondary">Reviewer Comment</label>
-                                            <textarea className="form-control" rows="4" placeholder="Write a comment for approval or rejection..." value={syllabusRemarks} onChange={(event) => setSyllabusRemarks(event.target.value)}></textarea>
-                                        </div>
+                                        {getSyllabusId(selectedSyllabusItem) ? (
+
+                                            <div className="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-2">
+
+                                                <div>
+
+                                                    Current file:{" "}
+
+                                                    <strong>
+                                                        {getSyllabusObject(
+                                                            selectedSyllabusItem
+                                                        )?.fileName ||
+                                                            getSyllabusObject(
+                                                                selectedSyllabusItem
+                                                            )?.originalFileName ||
+                                                            selectedSyllabusItem.fileName ||
+                                                            "Syllabus file"}
+                                                    </strong>
+
+                                                </div>
+
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-sm btn-outline-primary"
+                                                    onClick={() =>
+                                                        handleViewSyllabus(
+                                                            selectedSyllabusItem
+                                                        )
+                                                    }
+                                                >
+                                                    <i className="bi bi-eye me-1"></i>
+                                                    View / Download
+                                                </button>
+
+                                            </div>
+
+                                        ) : (
+
+                                            <div className="alert alert-secondary">
+                                                No syllabus has been uploaded yet.
+                                            </div>
+
+                                        )}
+
+
+                                        <label
+                                            htmlFor="admin-syllabus-file"
+                                            className="border rounded-3 p-4 text-center d-block"
+                                            style={{
+                                                cursor: "pointer",
+                                                borderStyle: "dashed",
+                                                backgroundColor: "#fcfbf7"
+                                            }}
+                                        >
+
+                                            <i className="bi bi-cloud-arrow-up fs-2 text-primary"></i>
+
+                                            <div className="mt-2 text-muted">
+
+                                                {selectedSyllabusFile
+                                                    ? selectedSyllabusFile.name
+                                                    : "Click to upload or replace syllabus"}
+
+                                            </div>
+
+                                            <small className="text-muted">
+                                                Supported formats: PDF, DOC, DOCX. Maximum size 10 MB.
+                                            </small>
+
+                                        </label>
+
+
+                                        <input
+                                            id="admin-syllabus-file"
+                                            type="file"
+                                            className="d-none"
+                                            accept=".pdf,.doc,.docx"
+                                            onChange={handleSyllabusFileChange}
+                                        />
+
+
+                                        <button
+                                            type="button"
+                                            className="btn btn-primary mt-3"
+                                            onClick={handleAdminSyllabusUpload}
+                                            disabled={
+                                                syllabusUploading ||
+                                                !selectedSyllabusFile
+                                            }
+                                        >
+
+                                            {syllabusUploading ? (
+
+                                                <>
+
+                                                    <span className="spinner-border spinner-border-sm me-2"></span>
+
+                                                    Uploading...
+
+                                                </>
+
+                                            ) : (
+
+                                                <>
+
+                                                    <i className="bi bi-upload me-2"></i>
+
+                                                    {getSyllabusId(selectedSyllabusItem)
+                                                        ? "Replace Syllabus"
+                                                        : "Upload Syllabus"}
+
+                                                </>
+
+                                            )}
+
+                                        </button>
+
+                                    </div>
+
+
+                                    <hr className="my-4" />
+
+
+                                    <div className="mb-4">
+
+                                        <label className="form-label fw-bold text-uppercase small text-secondary">
+                                            Rejection Reason / Reviewer Comment
+                                        </label>
+
+                                        <textarea
+                                            className="form-control"
+                                            rows="4"
+                                            placeholder="Write a reason when rejecting the syllabus..."
+                                            value={syllabusRemarks}
+                                            onChange={(event) =>
+                                                setSyllabusRemarks(
+                                                    event.target.value
+                                                )
+                                            }
+                                            disabled={
+                                                syllabusStatusUpdating
+                                            }
+                                        ></textarea>
+
+                                    </div>
+
+
+                                    {/* REVIEW ACTIONS */}
+
+                                    {["UPLOADED", "APPROVED"].includes(
+                                        getSyllabusStatus(selectedSyllabusItem)
+                                    ) ? (
 
                                         <div className="d-flex flex-wrap gap-2">
-                                            <button type="button" className="btn btn-success px-4" onClick={() => handleAdminSyllabusStatus("APPROVED")} disabled={syllabusStatusUpdating || !getSyllabusId(selectedSyllabusItem) || getSyllabusStatus(selectedSyllabusItem) === "APPROVED"}>
-                                                {syllabusStatusUpdating ? <span className="spinner-border spinner-border-sm me-2"></span> : <i className="bi bi-check-circle me-2"></i>}
+
+                                            <button
+                                                type="button"
+                                                className="btn btn-success px-4"
+                                                onClick={() =>
+                                                    handleAdminSyllabusStatus("APPROVED")
+                                                }
+                                                disabled={
+                                                    syllabusStatusUpdating ||
+                                                    !getSyllabusId(selectedSyllabusItem)
+                                                }
+                                            >
+
+                                                {syllabusStatusUpdating ? (
+
+                                                    <span className="spinner-border spinner-border-sm me-2"></span>
+
+                                                ) : (
+
+                                                    <i className="bi bi-check-circle me-2"></i>
+
+                                                )}
+
                                                 Approve
+
                                             </button>
-                                            <button type="button" className="btn btn-danger px-4" onClick={() => handleAdminSyllabusStatus("REJECTED")} disabled={syllabusStatusUpdating || !getSyllabusId(selectedSyllabusItem) || getSyllabusStatus(selectedSyllabusItem) === "REJECTED"}>
-                                                {syllabusStatusUpdating ? <span className="spinner-border spinner-border-sm me-2"></span> : <i className="bi bi-x-circle me-2"></i>}
+
+
+                                            <button
+                                                type="button"
+                                                className="btn btn-danger px-4"
+                                                onClick={() =>
+                                                    handleAdminSyllabusStatus("REJECTED")
+                                                }
+                                                disabled={
+                                                    syllabusStatusUpdating ||
+                                                    !getSyllabusId(selectedSyllabusItem)
+                                                }
+                                            >
+
+                                                {syllabusStatusUpdating ? (
+
+                                                    <span className="spinner-border spinner-border-sm me-2"></span>
+
+                                                ) : (
+
+                                                    <i className="bi bi-x-circle me-2"></i>
+
+                                                )}
+
                                                 Reject
+
                                             </button>
-                                            <button type="button" className="btn btn-outline-secondary px-4 ms-md-auto" onClick={closeSyllabusEditor}>Close</button>
+
                                         </div>
+
+                                    ) : (
+
+                                        <div className="alert alert-info">
+
+                                            This syllabus is not currently available for approval or rejection.
+                                            Current status:{" "}
+
+                                            <strong>
+                                                {getSyllabusStatusLabel(
+                                                    getSyllabusStatus(selectedSyllabusItem)
+                                                )}
+                                            </strong>
+
+                                        </div>
+
+                                    )}
+
+
+                                    <div className="d-flex justify-content-end mt-3">
+
+                                        <button
+                                            type="button"
+                                            className="btn btn-outline-secondary px-4"
+                                            onClick={closeSyllabusEditor}
+                                            disabled={
+                                                syllabusUploading ||
+                                                syllabusStatusUpdating
+                                            }
+                                        >
+                                            Close
+                                        </button>
+
                                     </div>
+
                                 </div>
+
                             </div>
+
                         </div>
-                    </>
-                )
-            }
+
+                    </div>
+
+                </>
+
+            )}
+
         </>
 
     );
