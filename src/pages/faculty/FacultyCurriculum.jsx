@@ -1861,13 +1861,7 @@ function FacultyCurriculum() {
                                                                     {/* ELECTIVE TITLE */}
 
                                                                     <div>
-                                                                        <div className="fw-bold fs-5">
-                                                                            {open
-                                                                                ? "OPEN ELECTIVE"
-                                                                                : "ELECTIVE GROUP"}
-                                                                        </div>
-
-                                                                        <div className="fs-5">
+                                                                        <div className="fs-5 fw-bold">
                                                                             {group.name ||
                                                                                 group.groupName ||
                                                                                 "Unnamed Elective Group"}
