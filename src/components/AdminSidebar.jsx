@@ -24,15 +24,15 @@ function AdminSidebar() {
             icon: "bi-people"
         },
         {
-            name: "Course Structure",
+            name: "Upload Course Structure",
             path: "/admin/course-structure",
             icon: "bi-file-earmark-spreadsheet"
         },
-        {
-            name: "View Courses",
-            path: "/admin/course-structure/view",
-            icon: "bi-journal-text"
-        },
+        // {
+        //     name: "View Courses",
+        //     path: "/admin/course-structure/view",
+        //     icon: "bi-journal-text"
+        // },
         {
             name: "Curriculum",
             path: "/admin/curriculum",

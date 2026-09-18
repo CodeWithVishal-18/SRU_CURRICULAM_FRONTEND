@@ -1,14 +1,10 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { toast } from "react-toastify";
-
 import FacultyLayout from "../../layouts/FacultyLayout";
 import { useAuth } from "../../context/AuthContext";
-
 import { getAllRegulations } from "../../services/regulationService";
 import { getAllDepartments } from "../../services/departmentService";
-
 import api from "../../services/api";
-
 import {
     getSemesterCurriculum,
     getElectiveSubjects,
@@ -26,78 +22,71 @@ function FacultyCurriculum() {
     // =========================================================
     // STATE
     // =========================================================
-
     const [regulations, setRegulations] = useState([]);
     const [departments, setDepartments] = useState([]);
-
     const [regulationCode, setRegulationCode] = useState("");
     const [departmentCode, setDepartmentCode] = useState("");
     const [semester, setSemester] = useState("");
-
     const [curricula, setCurricula] = useState([]);
-
-    /*
-     * {
-     *   groupId: [subjectId1, subjectId2]
-     * }
-     */
     const [selections, setSelections] = useState({});
-
-    /*
-     * {
-     *   groupId: [subject1, subject2]
-     * }
-     */
     const [subjects, setSubjects] = useState({});
-
     const [initialLoading, setInitialLoading] = useState(true);
     const [curriculumLoading, setCurriculumLoading] = useState(false);
     const [saving, setSaving] = useState(false);
-
     const [subjectsLoading, setSubjectsLoading] = useState({});
 
     // =========================================================
-    // NEW SYLLABUS STATES
+    // SYLLABUS STATES
     // =========================================================
-
-    /*
-     * {
-     *   groupId: true / false
-     * }
-     */
     const [expandedGroups, setExpandedGroups] = useState({});
-
     const [uploadModal, setUploadModal] = useState({
         open: false,
         type: "",
         item: null,
     });
-
     const [selectedFile, setSelectedFile] = useState(null);
     const [uploading, setUploading] = useState(false);
 
     // =========================================================
-    // USER DEPARTMENT
+    // REJECTION REMARKS MODAL STATE
     // =========================================================
+    const [remarksModal, setRemarksModal] = useState({
+        open: false,
+        item: null,
+        type: "",
+        loading: false,
+        reason: "",
+        reviewedBy: "",
+        reviewedAt: "",
+    });
 
+    // =========================================================
+    // USER DEPARTMENT & PERMISSIONS
+    // =========================================================
     const userDepartmentCode = user?.departmentCode
         ?.trim()
         .toUpperCase();
 
-    const canEdit =
-        Boolean(
-            user &&
-            (user.role === "HOD" || user.role === "DEAN") &&
-            userDepartmentCode &&
-            departmentCode &&
-            userDepartmentCode ===
-            departmentCode.trim().toUpperCase()
-        );
+    const isFaculty = Boolean(
+        user && (user.role === "HOD" || user.role === "DEAN")
+    );
+
+    const isOwnDepartment = Boolean(
+        isFaculty &&
+        userDepartmentCode &&
+        departmentCode &&
+        userDepartmentCode === departmentCode.trim().toUpperCase()
+    );
+
+    // Core course syllabus: Own department only
+    const canUploadCourse = isOwnDepartment;
+
+    // Elective subject syllabus: Any HOD / DEAN can upload
+    const canUploadElective = isFaculty;
 
     // =========================================================
     // SEMESTERS
     // =========================================================
-
     const semesters = [
         { value: "1", label: "Semester I" },
         { value: "2", label: "Semester II" },
@@ -112,52 +101,33 @@ function FacultyCurriculum() {
     // =========================================================
     // INITIAL DATA
     // =========================================================
-
     useEffect(() => {
         const loadInitialData = async () => {
             try {
                 setInitialLoading(true);
-
-                const [
-                    regulationResponse,
-                    departmentResponse,
-                ] = await Promise.all([
+                const [regulationResponse, departmentResponse] = await Promise.all([
                     getAllRegulations(),
                     getAllDepartments(),
                 ]);
-
-                setRegulations(
-                    regulationResponse?.data || []
-                );
-
-                setDepartments(
-                    departmentResponse?.data || []
-                );
+                setRegulations(regulationResponse?.data || []);
+                setDepartments(departmentResponse?.data || []);
 
                 if (userDepartmentCode) {
                     setDepartmentCode(userDepartmentCode);
                 }
             } catch (error) {
-                console.error(
-                    "Failed to load initial data:",
-                    error
-                );
-
-                toast.error(
-                    "Failed to load regulations or departments"
-                );
+                console.error("Failed to load initial data:", error);
+                toast.error("Failed to load regulations or departments");
             } finally {
                 setInitialLoading(false);
             }
         };
-
         loadInitialData();
     }, [userDepartmentCode]);
 
     // =========================================================
     // CLEAR CURRICULUM
     // =========================================================
-
     const clearCurriculum = () => {
         setCurricula([]);
         setSubjects({});
@@ -166,27 +136,15 @@ function FacultyCurriculum() {
         setExpandedGroups({});
     };
 
-    // =========================================================
-    // REGULATION CHANGE
-    // =========================================================
-
     const handleRegulationChange = (event) => {
         setRegulationCode(event.target.value);
         clearCurriculum();
     };
 
-    // =========================================================
-    // DEPARTMENT CHANGE
-    // =========================================================
-
     const handleDepartmentChange = (event) => {
         setDepartmentCode(event.target.value);
         clearCurriculum();
     };
-
-    // =========================================================
-    // SEMESTER CHANGE
-    // =========================================================
 
     const handleSemesterChange = (event) => {
         setSemester(event.target.value);
@@ -196,33 +154,18 @@ function FacultyCurriculum() {
     // =========================================================
     // NORMALIZE CURRICULUM RESPONSE
     // =========================================================
-
-    const normalizeCurriculumResponse = (
-        response,
-        semesterNumber
-    ) => {
-        /*
-         * getSemesterCurriculum() currently returns response.data.
-         * This also supports an Axios response object in case
-         * the service is changed later.
-         */
-
+    const normalizeCurriculumResponse = (response, semesterNumber) => {
         const data = response?.data || response || {};
-
         return {
             semester: semesterNumber,
             courses: data?.courses || [],
-            electiveGroups:
-                data?.electiveGroups ||
-                data?.electives ||
-                [],
+            electiveGroups: data?.electiveGroups || data?.electives || [],
         };
     };
 
     // =========================================================
     // FETCH PERSISTED SYLLABUS STATUS
     // =========================================================
-
     const attachCourseSyllabusStatus = async (courses = []) => {
         return Promise.all(
             courses.map(async (course) => {
@@ -230,7 +173,6 @@ function FacultyCurriculum() {
                     const response = await getCourseSyllabusStatus(course.id);
                     const data = response?.data || response || {};
                     const syllabus = data?.syllabus || data?.syllabusDetails || null;
-
                     return {
                         ...course,
                         syllabusId:
@@ -253,13 +195,16 @@ function FacultyCurriculum() {
                             syllabus?.originalFileName ||
                             course?.fileName ||
                             null,
+                        rejectionReason:
+                            data?.rejectionReason ||
+                            syllabus?.rejectionReason ||
+                            course?.rejectionReason ||
+                            null,
                     };
                 } catch (error) {
-                    // A missing syllabus must not prevent the curriculum from loading.
                     return {
                         ...course,
-                        syllabusStatus:
-                            course?.syllabusStatus || "NOT_UPLOADED",
+                        syllabusStatus: course?.syllabusStatus || "NOT_UPLOADED",
                     };
                 }
             })
@@ -273,7 +218,6 @@ function FacultyCurriculum() {
                     const response = await getElectiveSubjectSyllabusStatus(subject.id);
                     const data = response?.data || response || {};
                     const syllabus = data?.syllabus || data?.syllabusDetails || null;
-
                     return {
                         ...subject,
                         syllabusId:
@@ -296,12 +240,16 @@ function FacultyCurriculum() {
                             syllabus?.originalFileName ||
                             subject?.fileName ||
                             null,
+                        rejectionReason:
+                            data?.rejectionReason ||
+                            syllabus?.rejectionReason ||
+                            subject?.rejectionReason ||
+                            null,
                     };
                 } catch (error) {
                     return {
                         ...subject,
-                        syllabusStatus:
-                            subject?.syllabusStatus || "NOT_UPLOADED",
+                        syllabusStatus: subject?.syllabusStatus || "NOT_UPLOADED",
                     };
                 }
             })
@@ -311,18 +259,15 @@ function FacultyCurriculum() {
     // =========================================================
     // LOAD CURRICULUM
     // =========================================================
-
     const handleLoadCurriculum = async () => {
         if (!regulationCode) {
             toast.error("Please select a regulation");
             return;
         }
-
         if (!departmentCode) {
             toast.error("Please select a department");
             return;
         }
-
         if (!semester) {
             toast.error("Please select a semester");
             return;
@@ -332,40 +277,23 @@ function FacultyCurriculum() {
             setCurriculumLoading(true);
             clearCurriculum();
 
-            // =================================================
-            // LOAD ALL SEMESTERS
-            // =================================================
-
             if (semester === "ALL") {
-                const semesterNumbers = [
-                    1, 2, 3, 4, 5, 6, 7, 8,
-                ];
-
+                const semesterNumbers = [1, 2, 3, 4, 5, 6, 7, 8];
                 const responses = await Promise.all(
                     semesterNumbers.map(async (sem) => {
                         try {
-                            const response =
-                                await getSemesterCurriculum(
-                                    regulationCode,
-                                    departmentCode,
-                                    sem
-                                );
-
-                            const normalized =
-                                normalizeCurriculumResponse(response, sem);
-
-                            normalized.courses =
-                                await attachCourseSyllabusStatus(
-                                    normalized.courses
-                                );
-
+                            const response = await getSemesterCurriculum(
+                                regulationCode,
+                                departmentCode,
+                                sem
+                            );
+                            const normalized = normalizeCurriculumResponse(response, sem);
+                            normalized.courses = await attachCourseSyllabusStatus(
+                                normalized.courses
+                            );
                             return normalized;
                         } catch (error) {
-                            console.error(
-                                `Failed to load Semester ${sem}:`,
-                                error
-                            );
-
+                            console.error(`Failed to load Semester ${sem}:`, error);
                             return {
                                 semester: sem,
                                 courses: [],
@@ -374,75 +302,46 @@ function FacultyCurriculum() {
                         }
                     })
                 );
-
                 setCurricula(responses);
-
                 const allGroups = responses.flatMap(
                     (item) => item.electiveGroups || []
                 );
-
                 await loadElectiveSubjects(allGroups);
-
                 const existingSelections = {};
-
                 allGroups.forEach((group) => {
                     existingSelections[group.id] = (
                         group.selectedSubjects || []
                     ).map((subject) => Number(subject.id));
                 });
-
                 setSelections(existingSelections);
-
                 return;
             }
 
-            // =================================================
-            // LOAD ONE SEMESTER
-            // =================================================
-
             const sem = Number(semester);
-
             const response = await getSemesterCurriculum(
                 regulationCode,
                 departmentCode,
                 sem
             );
-
-            const singleCurriculum =
-                normalizeCurriculumResponse(response, sem);
-
-            singleCurriculum.courses =
-                await attachCourseSyllabusStatus(
-                    singleCurriculum.courses
-                );
-
+            const singleCurriculum = normalizeCurriculumResponse(response, sem);
+            singleCurriculum.courses = await attachCourseSyllabusStatus(
+                singleCurriculum.courses
+            );
             setCurricula([singleCurriculum]);
-
-            const groups =
-                singleCurriculum.electiveGroups || [];
-
+            const groups = singleCurriculum.electiveGroups || [];
             await loadElectiveSubjects(groups);
-
             const existingSelections = {};
-
             groups.forEach((group) => {
                 existingSelections[group.id] = (
                     group.selectedSubjects || []
                 ).map((subject) => Number(subject.id));
             });
-
             setSelections(existingSelections);
         } catch (error) {
-            console.error(
-                "Failed to load curriculum:",
-                error
-            );
-
+            console.error("Failed to load curriculum:", error);
             toast.error(
-                error?.response?.data?.message ||
-                "Failed to load curriculum"
+                error?.response?.data?.message || "Failed to load curriculum"
             );
-
             clearCurriculum();
         } finally {
             setCurriculumLoading(false);
@@ -452,37 +351,27 @@ function FacultyCurriculum() {
     // =========================================================
     // LOAD ELECTIVE SUBJECTS
     // =========================================================
-
     const loadElectiveSubjects = async (groups) => {
         const subjectMap = {};
-
         for (const group of groups) {
             try {
                 setSubjectsLoading((previous) => ({
                     ...previous,
                     [group.id]: true,
                 }));
-
-                const response = await getElectiveSubjects(
-                    group.id
-                );
-
+                const response = await getElectiveSubjects(group.id);
                 const data =
                     response?.data ||
                     response?.subjects ||
                     response ||
                     [];
-
                 const subjectList = Array.isArray(data) ? data : [];
-
-                subjectMap[group.id] =
-                    await attachElectiveSyllabusStatus(subjectList);
+                subjectMap[group.id] = await attachElectiveSyllabusStatus(subjectList);
             } catch (error) {
                 console.error(
                     `Failed to load subjects for group ${group.id}:`,
                     error
                 );
-
                 subjectMap[group.id] = [];
             } finally {
                 setSubjectsLoading((previous) => ({
@@ -491,26 +380,18 @@ function FacultyCurriculum() {
                 }));
             }
         }
-
-        setSubjects(subjectMap);
+        setSubjects((prev) => ({ ...prev, ...subjectMap }));
     };
 
     // =========================================================
     // TOGGLE ELECTIVE GROUP
     // =========================================================
-
     const handleToggleElectiveGroup = async (group) => {
         const groupId = group.id;
-
         setExpandedGroups((previous) => ({
             ...previous,
             [groupId]: !previous[groupId],
         }));
-
-        /*
-         * Subjects are already loaded during curriculum loading.
-         * This fallback loads them if they are not available.
-         */
 
         if (subjects[groupId]) {
             return;
@@ -521,42 +402,21 @@ function FacultyCurriculum() {
                 ...previous,
                 [groupId]: true,
             }));
-
             const response = await getElectiveSubjects(groupId);
-
             const data =
                 response?.data ||
                 response?.subjects ||
                 response ||
                 [];
-
-            const subjectList = Array.isArray(data)
-                ? data
-                : [];
-
-            /*
-             * Fetch persisted syllabus status before updating state.
-             * The await must remain outside the setSubjects callback.
-             */
-            const subjectsWithSyllabusStatus =
-                await attachElectiveSyllabusStatus(subjectList);
-
-            /*
-             * Update subjects state using the already resolved data.
-             */
+            const subjectList = Array.isArray(data) ? data : [];
+            const subjectsWithSyllabusStatus = await attachElectiveSyllabusStatus(subjectList);
             setSubjects((previous) => ({
                 ...previous,
                 [groupId]: subjectsWithSyllabusStatus,
             }));
         } catch (error) {
-            console.error(
-                "Failed to load elective subjects:",
-                error
-            );
-
-            toast.error(
-                "Failed to load elective subjects"
-            );
+            console.error("Failed to load elective subjects:", error);
+            toast.error("Failed to load elective subjects");
         } finally {
             setSubjectsLoading((previous) => ({
                 ...previous,
@@ -566,203 +426,122 @@ function FacultyCurriculum() {
     };
 
     // =========================================================
-    // OPEN ELECTIVE CHECK
+    // ELECTIVE & COURSE HELPERS
     // =========================================================
-
-    const isOpenElective = (group) => {
-        const type = String(group?.electiveType || "")
-            .trim()
-            .toUpperCase()
-            .replaceAll("-", "_")
-            .replaceAll(" ", "_");
-
-        return (
-            type === "OPEN_ELECTIVE" ||
-            type.includes("OPEN_ELECTIVE")
-        );
-    };
-
-    // =========================================================
-    // EXCLUDED COURSE CHECK
-    // =========================================================
-
     const isExcludedCourse = (course) => {
         const code = String(course?.courseCode || "")
             .trim()
             .toUpperCase();
-
-        return (
-            code.includes("HN") ||
-            code.includes("MN")
-        );
+        return code.includes("HN") || code.includes("MN");
     };
-
-    // =========================================================
-    // FORMAT NUMBER
-    // =========================================================
 
     const formatNumber = (value) => {
         const number = Number(value) || 0;
-
         return Number.isInteger(number)
             ? number
             : Number(number.toFixed(2));
     };
 
-    // =========================================================
-    // GET CREDIT
-    // =========================================================
-
     const getCredit = (item) => {
         const stored = Number(item?.credits);
-
-        if (
-            Number.isFinite(stored) &&
-            stored > 0
-        ) {
+        if (Number.isFinite(stored) && stored > 0) {
             return stored;
         }
-
         const lecture = Number(item?.lecture) || 0;
         const tutorial = Number(item?.tutorial) || 0;
         const practical = Number(item?.practical) || 0;
-
-        if (
-            lecture === 0 &&
-            tutorial === 0 &&
-            practical === 0
-        ) {
+        if (lecture === 0 && tutorial === 0 && practical === 0) {
             return 0;
         }
-
-        return (
-            lecture +
-            0.5 * tutorial +
-            0.5 * practical
-        );
+        return lecture + 0.5 * tutorial + 0.5 * practical;
     };
 
     // =========================================================
-    // SUBJECT CHANGE
+    // SEPARATE STANDARD AND ALTERNATIVE ("Or") TRACKS
     // =========================================================
+    const getSemesterTracks = (curriculum) => {
+        const semNum = Number(curriculum.semester);
+        const courses = (curriculum.courses || []).filter((c) => !isExcludedCourse(c));
+        const electives = curriculum.electiveGroups || [];
 
-    const handleSubjectChange = (
-        groupId,
-        event
-    ) => {
-        if (!canEdit) {
-            return;
-        }
+        const isAltCourse = (c) =>
+            Boolean(c.isAlternative) ||
+            (semNum === 7 && (
+                Number(c.credits) === 20 ||
+                (c.courseCode && c.courseCode.toUpperCase().includes("PR402")) ||
+                (c.courseName && c.courseName.toLowerCase().includes("industrial project"))
+            ));
 
-        const selectedValues = Array.from(
-            event.target.selectedOptions
-        ).map((option) => Number(option.value));
+        const altCourses = courses.filter(isAltCourse);
+        const mainCourses = courses.filter((c) => !isAltCourse(c));
 
-        setSelections((previous) => ({
-            ...previous,
-            [groupId]: selectedValues,
-        }));
-    };
+        if (semNum === 7) {
+            const findElective = (term) =>
+                electives.find((g) => (g.name || "").toLowerCase().includes(term.toLowerCase()));
 
-    // =========================================================
-    // SAVE ELECTIVE SELECTIONS
-    // =========================================================
+            const pe2 = findElective("Program Elective - II") || findElective("Program Elective-II");
+            const pe3 = findElective("Program Elective - III") || findElective("Program Elective-III");
+            const pe4 = findElective("Program Elective - IV") || findElective("Program Elective-IV");
+            const oe2 = findElective("Open Elective - II") || findElective("Open Elective-II");
+            const se2 = findElective("Specialization Elective - II") || findElective("Specialization Elective-II");
 
-    const handleSave = async () => {
-        if (!canEdit) {
-            toast.error(
-                "You can only modify electives for your own department"
-            );
-            return;
-        }
+            const capstone = mainCourses.find((c) =>
+                (c.courseCode && c.courseCode.toUpperCase().includes("PR401")) ||
+                (c.courseName && c.courseName.toLowerCase().includes("capstone"))
+            ) || mainCourses[0];
 
-        if (!regulationCode || !departmentCode) {
-            toast.error(
-                "Please select regulation and department"
-            );
-            return;
-        }
+            const track1Items = [];
+            const usedElectiveIds = new Set();
 
-        const requests = [];
+            const addElective = (el) => {
+                if (el && !usedElectiveIds.has(el.id)) {
+                    track1Items.push({ type: "elective", data: el });
+                    usedElectiveIds.add(el.id);
+                }
+            };
 
-        curricula.forEach((curriculum) => {
-            const selectionList = [];
+            addElective(pe2);
+            addElective(pe3);
+            addElective(pe4);
+            addElective(oe2);
+            if (capstone) {
+                track1Items.push({ type: "course", data: capstone });
+            }
+            addElective(se2);
 
-            const openGroups = (
-                curriculum.electiveGroups || []
-            ).filter(isOpenElective);
-
-            openGroups.forEach((group) => {
-                const selectedIds =
-                    selections[group.id] || [];
-
-                selectedIds.forEach((subjectId) => {
-                    selectionList.push({
-                        electiveGroupId: group.id,
-                        subjectId,
-                    });
-                });
+            electives.forEach((el) => {
+                if (!usedElectiveIds.has(el.id)) addElective(el);
+            });
+            mainCourses.forEach((c) => {
+                if (c !== capstone) track1Items.push({ type: "course", data: c });
             });
 
-            if (openGroups.length > 0) {
-                requests.push(
-                    selectElectives(
-                        regulationCode,
-                        departmentCode,
-                        curriculum.semester,
-                        {
-                            selections: selectionList,
-                        }
-                    )
-                );
-            }
-        });
+            const track2Items = altCourses.map((c) => ({ type: "course", data: c }));
 
-        if (requests.length === 0) {
-            toast.error(
-                "No Open Elective groups are available"
-            );
-            return;
+            return {
+                hasAltTrack: track2Items.length > 0,
+                track1Items,
+                track2Items,
+            };
         }
 
-        try {
-            setSaving(true);
+        const track1Items = [
+            ...mainCourses.map((c) => ({ type: "course", data: c })),
+            ...electives.map((g) => ({ type: "elective", data: g })),
+        ];
+        const track2Items = altCourses.map((c) => ({ type: "course", data: c }));
 
-            await Promise.all(requests);
-
-            toast.success(
-                "Open Elective selections saved successfully"
-            );
-
-            await handleLoadCurriculum();
-        } catch (error) {
-            console.error(
-                "Failed to save electives:",
-                error
-            );
-
-            toast.error(
-                error?.response?.data?.message ||
-                "Failed to update elective selections"
-            );
-        } finally {
-            setSaving(false);
-        }
+        return {
+            hasAltTrack: track2Items.length > 0,
+            track1Items,
+            track2Items,
+        };
     };
 
     // =========================================================
-    // SYLLABUS HELPERS
+    // SYLLABUS UI HELPERS
     // =========================================================
-
     const getSyllabusObject = (item) => {
-        /*
-         * Supports different possible DTO property names:
-         *
-         * item.syllabus
-         * item.syllabusResponse
-         * item.syllabusDetails
-         */
-
         return (
             item?.syllabus ||
             item?.syllabusResponse ||
@@ -773,7 +552,6 @@ function FacultyCurriculum() {
 
     const getSyllabusId = (item) => {
         const syllabus = getSyllabusObject(item);
-
         return (
             syllabus?.id ||
             syllabus?.syllabusId ||
@@ -786,7 +564,6 @@ function FacultyCurriculum() {
 
     const getSyllabusStatus = (item) => {
         const syllabus = getSyllabusObject(item);
-
         return String(
             syllabus?.status ||
             syllabus?.syllabusStatus ||
@@ -797,92 +574,100 @@ function FacultyCurriculum() {
     };
 
     const getStatusBadgeClass = (status) => {
-        const normalizedStatus = String(status || "")
-            .trim()
-            .toUpperCase();
-
-        if (
-            normalizedStatus === "APPROVED" ||
-            normalizedStatus === "ACCEPTED"
-        ) {
+        const normalizedStatus = String(status || "").trim().toUpperCase();
+        if (normalizedStatus === "APPROVED" || normalizedStatus === "ACCEPTED") {
             return "bg-success-subtle text-success";
         }
-
-        if (
-            normalizedStatus === "REJECTED" ||
-            normalizedStatus === "DECLINED"
-        ) {
+        if (normalizedStatus === "REJECTED" || normalizedStatus === "DECLINED") {
             return "bg-danger-subtle text-danger";
         }
-
-        if (
-            normalizedStatus === "PENDING" ||
-            normalizedStatus === "UNDER_REVIEW"
-        ) {
+        if (normalizedStatus === "PENDING" || normalizedStatus === "UNDER_REVIEW") {
             return "bg-warning-subtle text-warning-emphasis";
         }
-
-        if (
-            normalizedStatus === "UPLOADED" ||
-            normalizedStatus === "SUBMITTED"
-        ) {
+        if (normalizedStatus === "UPLOADED" || normalizedStatus === "SUBMITTED") {
             return "bg-info-subtle text-info";
         }
-
         return "bg-secondary-subtle text-secondary";
     };
 
     const getStatusLabel = (status) => {
-        const normalizedStatus = String(status || "")
-            .trim()
-            .toUpperCase();
-
-        if (normalizedStatus === "NOT_UPLOADED") {
-            return "Not Uploaded";
-        }
-
-        if (normalizedStatus === "UPLOADED") {
-            return "Uploaded";
-        }
-
-        if (normalizedStatus === "SUBMITTED") {
-            return "Submitted";
-        }
-
-        if (normalizedStatus === "PENDING") {
-            return "Pending Review";
-        }
-
-        if (normalizedStatus === "UNDER_REVIEW") {
-            return "Under Review";
-        }
-
-        if (normalizedStatus === "APPROVED") {
-            return "Approved";
-        }
-
-        if (
-            normalizedStatus === "REJECTED" ||
-            normalizedStatus === "DECLINED"
-        ) {
-            return "Rejected";
-        }
-
+        const normalizedStatus = String(status || "").trim().toUpperCase();
+        if (normalizedStatus === "NOT_UPLOADED") return "Not Uploaded";
+        if (normalizedStatus === "UPLOADED") return "Uploaded";
+        if (normalizedStatus === "SUBMITTED") return "Submitted";
+        if (normalizedStatus === "PENDING") return "Pending Review";
+        if (normalizedStatus === "UNDER_REVIEW") return "Under Review";
+        if (normalizedStatus === "APPROVED") return "Approved";
+        if (normalizedStatus === "REJECTED" || normalizedStatus === "DECLINED") return "Rejected";
         return normalizedStatus
             .replaceAll("_", " ")
             .toLowerCase()
-            .replace(/\b\w/g, (letter) =>
-                letter.toUpperCase()
-            );
+            .replace(/\b\w/g, (letter) => letter.toUpperCase());
     };
 
     // =========================================================
-    // OPEN UPLOAD MODAL
+    // VIEW REJECTION REMARKS MODAL HANDLER
     // =========================================================
+    const handleViewRejectionRemarks = async (item, type) => {
+        const syllabus = getSyllabusObject(item);
+        const existingReason =
+            syllabus?.rejectionReason ||
+            item?.rejectionReason ||
+            null;
+
+        setRemarksModal({
+            open: true,
+            item,
+            type,
+            loading: !existingReason,
+            reason: existingReason || "",
+            reviewedBy: syllabus?.reviewedBy || item?.reviewedBy || "Admin",
+            reviewedAt: syllabus?.reviewedAt || item?.reviewedAt || "",
+        });
+
+        const syllabusId = getSyllabusId(item);
+        if (syllabusId && !existingReason) {
+            try {
+                const response = await api.get(`/api/syllabi/${syllabusId}`);
+                const data = response?.data?.data || response?.data || {};
+                setRemarksModal((prev) => ({
+                    ...prev,
+                    loading: false,
+                    reason: data.rejectionReason || "No explicit reason was provided.",
+                    reviewedBy: data.reviewedBy || prev.reviewedBy,
+                    reviewedAt: data.reviewedAt || prev.reviewedAt,
+                }));
+            } catch (error) {
+                console.error("Failed to fetch rejection details:", error);
+                setRemarksModal((prev) => ({
+                    ...prev,
+                    loading: false,
+                    reason: "Please replace the syllabus file as per administrative instructions.",
+                }));
+            }
+        }
+    };
+
+    const closeRemarksModal = () => {
+        setRemarksModal({
+            open: false,
+            item: null,
+            type: "",
+            loading: false,
+            reason: "",
+            reviewedBy: "",
+            reviewedAt: "",
+        });
+    };
 
     const openUploadModal = (type, item) => {
-        setSelectedFile(null);
+        const canUpload = type === "elective" ? canUploadElective : canUploadCourse;
+        if (!canUpload) {
+            toast.error("You can only upload core course syllabi for your own department.");
+            return;
+        }
 
+        setSelectedFile(null);
         setUploadModal({
             open: true,
             type,
@@ -890,94 +675,60 @@ function FacultyCurriculum() {
         });
     };
 
-    // =========================================================
-    // CLOSE UPLOAD MODAL
-    // =========================================================
-
     const closeUploadModal = () => {
-        if (uploading) {
-            return;
-        }
-
+        if (uploading) return;
         setUploadModal({
             open: false,
             type: "",
             item: null,
         });
-
         setSelectedFile(null);
     };
 
-    // =========================================================
-    // FILE CHANGE
-    // =========================================================
-
     const handleFileChange = (event) => {
         const file = event.target.files?.[0];
-
         if (!file) {
             setSelectedFile(null);
             return;
         }
-
         const maxSize = 10 * 1024 * 1024;
-
         if (file.size > maxSize) {
-            toast.error(
-                "File size must not exceed 10 MB"
-            );
-
+            toast.error("File size must not exceed 10 MB");
             event.target.value = "";
             setSelectedFile(null);
             return;
         }
-
         const isPdf =
             file.type === "application/pdf" ||
             file.name.toLowerCase().endsWith(".pdf");
-
         if (!isPdf) {
-            toast.error(
-                "Please upload a PDF file only"
-            );
-
+            toast.error("Please upload a PDF file only");
             event.target.value = "";
             setSelectedFile(null);
             return;
         }
-
         setSelectedFile(file);
     };
-
-    // =========================================================
-    // UPLOAD SYLLABUS
-    // =========================================================
 
     const handleUploadSyllabus = async () => {
         if (!selectedFile) {
             toast.error("Please select a PDF file");
             return;
         }
-
         const item = uploadModal.item;
-
         if (!item?.id) {
             toast.error("Unable to identify the selected subject");
             return;
         }
-
         try {
             setUploading(true);
-
             let uploadResponse;
-
             if (uploadModal.type === "course") {
                 uploadResponse = await uploadCourseSyllabus(
                     item.id,
                     selectedFile
                 );
             }
-
             if (uploadModal.type === "elective") {
                 uploadResponse = await uploadElectiveSubjectSyllabus(
                     item.id,
@@ -985,239 +736,151 @@ function FacultyCurriculum() {
                 );
             }
 
-            /*
-             * Some APIs return:
-             * {
-             *   id: 1,
-             *   status: "PENDING"
-             * }
-             *
-             * Others return:
-             * {
-             *   data: {
-             *      id: 1,
-             *      status: "PENDING"
-             *   }
-             * }
-             */
-
-            const uploadedSyllabus =
-                uploadResponse?.data || uploadResponse || {};
-
+            const uploadedSyllabus = uploadResponse?.data || uploadResponse || {};
             const uploadedSyllabusId =
-                uploadedSyllabus?.id ||
-                uploadedSyllabus?.syllabusId ||
-                null;
-
-            const uploadedStatus =
-                uploadedSyllabus?.status || "UPLOADED";
-
-            /*
-             * Update the current curriculum state immediately.
-             * Do not call handleLoadCurriculum() here because that
-             * endpoint may not return syllabus details.
-             */
+                uploadedSyllabus?.id || uploadedSyllabus?.syllabusId || null;
+            const uploadedStatus = uploadedSyllabus?.status || "UPLOADED";
 
             setCurricula((previousCurricula) =>
                 previousCurricula.map((curriculum) => ({
                     ...curriculum,
-
-                    courses: (curriculum.courses || []).map(
-                        (course) => {
-                            if (
-                                uploadModal.type === "course" &&
-                                Number(course.id) === Number(item.id)
-                            ) {
-                                return {
-                                    ...course,
-                                    syllabusId:
-                                        uploadedSyllabusId ||
-                                        course.syllabusId,
-                                    syllabusStatus: uploadedStatus,
-                                    syllabus:
-                                        uploadedSyllabusId
-                                            ? uploadedSyllabus
-                                            : course.syllabus,
-                                };
-                            }
-
-                            return course;
+                    courses: (curriculum.courses || []).map((course) => {
+                        if (
+                            uploadModal.type === "course" &&
+                            Number(course.id) === Number(item.id)
+                        ) {
+                            return {
+                                ...course,
+                                syllabusId: uploadedSyllabusId || course.syllabusId,
+                                syllabusStatus: uploadedStatus,
+                                syllabus: uploadedSyllabusId
+                                    ? uploadedSyllabus
+                                    : course.syllabus,
+                                rejectionReason: null,
+                            };
                         }
-                    ),
-
-                    electiveGroups: (
-                        curriculum.electiveGroups || []
-                    ).map((group) => ({
+                        return course;
+                    }),
+                    electiveGroups: (curriculum.electiveGroups || []).map((group) => ({
                         ...group,
-
-                        selectedSubjects: (
-                            group.selectedSubjects || []
-                        ),
-
-                        // The actual subject list is stored separately
-                        // in the subjects state, so groups remain unchanged.
+                        selectedSubjects: group.selectedSubjects || [],
                     })),
                 }))
             );
 
-            /*
-             * Update elective subject state separately because
-             * elective subjects are stored in the subjects object.
-             */
-
             if (uploadModal.type === "elective") {
                 setSubjects((previousSubjects) => {
-                    const updatedSubjects = {
-                        ...previousSubjects,
-                    };
-
+                    const updatedSubjects = { ...previousSubjects };
                     Object.keys(updatedSubjects).forEach((groupId) => {
                         updatedSubjects[groupId] = (
                             updatedSubjects[groupId] || []
                         ).map((subject) => {
-                            if (
-                                Number(subject.id) === Number(item.id)
-                            ) {
+                            if (Number(subject.id) === Number(item.id)) {
                                 return {
                                     ...subject,
-                                    syllabusId:
-                                        uploadedSyllabusId ||
-                                        subject.syllabusId,
+                                    syllabusId: uploadedSyllabusId || subject.syllabusId,
                                     syllabusStatus: uploadedStatus,
-                                    syllabus:
-                                        uploadedSyllabusId
-                                            ? uploadedSyllabus
-                                            : subject.syllabus,
+                                    syllabus: uploadedSyllabusId
+                                        ? uploadedSyllabus
+                                        : subject.syllabus,
+                                    rejectionReason: null,
                                 };
                             }
-
                             return subject;
                         });
                     });
-
                     return updatedSubjects;
                 });
             }
-
             toast.success("Syllabus uploaded successfully");
-
             closeUploadModal();
         } catch (error) {
-            console.error(
-                "Syllabus upload failed:",
-                error
-            );
-
+            console.error("Syllabus upload failed:", error);
             toast.error(
-                error?.response?.data?.message ||
-                "Failed to upload syllabus"
+                error?.response?.data?.message || "Failed to upload syllabus"
             );
         } finally {
             setUploading(false);
         }
     };
 
-    // =========================================================
-    // VIEW SYLLABUS FILE
-    // =========================================================
-
     const handleViewSyllabus = async (item) => {
         const syllabusId = getSyllabusId(item);
-
         if (!syllabusId) {
-            toast.error(
-                "Syllabus file is not available"
-            );
+            toast.error("Syllabus file is not available");
             return;
         }
-
         try {
-            const fileUrl =
-                getSyllabusFileUrl(syllabusId);
-
-            /*
-             * Use Axios instead of window.open directly.
-             * This allows the configured JWT interceptor
-             * to attach the authorization token.
-             */
-
+            const fileUrl = getSyllabusFileUrl(syllabusId);
             const response = await api.get(fileUrl, {
                 responseType: "blob",
             });
-
-            const blobUrl = window.URL.createObjectURL(
-                response.data
-            );
-
-            window.open(
-                blobUrl,
-                "_blank",
-                "noopener,noreferrer"
-            );
-
+            const blobUrl = window.URL.createObjectURL(response.data);
+            window.open(blobUrl, "_blank", "noopener,noreferrer");
             setTimeout(() => {
                 window.URL.revokeObjectURL(blobUrl);
             }, 60000);
         } catch (error) {
-            console.error(
-                "Failed to open syllabus:",
-                error
-            );
-
+            console.error("Failed to open syllabus:", error);
             toast.error(
-                error?.response?.data?.message ||
-                "Unable to open syllabus file"
+                error?.response?.data?.message || "Unable to open syllabus file"
             );
         }
     };
 
     // =========================================================
-    // SYLLABUS ACTIONS
+    // DYNAMIC SYLLABUS ACTIONS WITH REJECTION REMARK ICON
     // =========================================================
-
-    const renderSyllabusActions = (
-        item,
-        type
-    ) => {
+    const renderSyllabusActions = (item, type) => {
         const syllabusId = getSyllabusId(item);
         const status = getSyllabusStatus(item);
+        const isRejected = status === "REJECTED" || status === "DECLINED";
+        const canUpload = type === "elective" ? canUploadElective : canUploadCourse;
 
         return (
-            <div className="d-flex flex-column align-items-center gap-2">
-                <span
-                    className={`badge ${getStatusBadgeClass(
-                        status
-                    )}`}
-                >
+            <div className="d-flex flex-column align-items-center gap-1">
+                <span className={`badge ${getStatusBadgeClass(status)}`}>
                     {getStatusLabel(status)}
                 </span>
+                <div className="d-flex flex-wrap justify-content-center align-items-center gap-1 mt-1">
+                    {/* View Rejection Remark Button */}
+                    {isRejected && (
+                        <button
+                            type="button"
+                            className="btn btn-sm btn-outline-danger py-0 px-2"
+                            onClick={() => handleViewRejectionRemarks(item, type)}
+                            title="View Rejection Remark"
+                        >
+                            <i className="bi bi-chat-right-text me-1"></i>
+                            Remark
+                        </button>
+                    )}
 
-                <div className="d-flex flex-wrap justify-content-center gap-2">
+                    {/* View File Button */}
                     {syllabusId && (
                         <button
                             type="button"
-                            className="btn btn-sm btn-outline-primary"
-                            onClick={() =>
-                                handleViewSyllabus(item)
-                            }
+                            className="btn btn-sm btn-outline-primary py-0 px-2"
+                            onClick={() => handleViewSyllabus(item)}
                         >
                             <i className="bi bi-eye me-1"></i>
                             View
                         </button>
                     )}
 
-                    {canEdit && (
+                    {/* Upload / Replace Button */}
+                    {canUpload && (
                         <button
                             type="button"
-                            className="btn btn-sm btn-outline-success"
-                            onClick={() =>
-                                openUploadModal(type, item)
-                            }
+                            className={`btn btn-sm py-0 px-2 ${
+                                isRejected
+                                    ? "btn-danger"
+                                    : "btn-outline-success"
+                            }`}
+                            onClick={() => openUploadModal(type, item)}
                         >
                             <i className="bi bi-upload me-1"></i>
-                            {syllabusId
-                                ? "Replace"
-                                : "Upload"}
+                            {isRejected ? "Re-Upload" : syllabusId ? "Replace" : "Upload"}
                         </button>
                     )}
                 </div>
@@ -1225,121 +888,14 @@ function FacultyCurriculum() {
         );
     };
 
-    // =========================================================
-    // TOTAL FOR SEMESTER
-    // =========================================================
-
-    const totalForSemester = (curriculum) => {
-        const courses = (
-            curriculum.courses || []
-        ).filter(
-            (course) => !isExcludedCourse(course)
-        );
-
-        const electives =
-            curriculum.electiveGroups || [];
-
-        const lecture = courses.reduce(
-            (sum, course) =>
-                sum + (Number(course.lecture) || 0),
-            0
-        );
-
-        const tutorial = courses.reduce(
-            (sum, course) =>
-                sum + (Number(course.tutorial) || 0),
-            0
-        );
-
-        const practical = courses.reduce(
-            (sum, course) =>
-                sum + (Number(course.practical) || 0),
-            0
-        );
-
-        const credits = courses.reduce(
-            (sum, course) =>
-                sum + getCredit(course),
-            0
-        );
-
-        const selectedElectives = electives.filter(
-            (group) => {
-                if (isOpenElective(group)) {
-                    return (
-                        (selections[group.id] || [])
-                            .length > 0
-                    );
-                }
-
-                return true;
-            }
-        );
-
-        const finalLecture =
-            lecture +
-            selectedElectives.reduce(
-                (sum, group) =>
-                    sum +
-                    (Number(group.lecture) || 0),
-                0
-            );
-
-        const finalTutorial =
-            tutorial +
-            selectedElectives.reduce(
-                (sum, group) =>
-                    sum +
-                    (Number(group.tutorial) || 0),
-                0
-            );
-
-        const finalPractical =
-            practical +
-            selectedElectives.reduce(
-                (sum, group) =>
-                    sum +
-                    (Number(group.practical) || 0),
-                0
-            );
-
-        const finalCredits =
-            credits +
-            selectedElectives.reduce(
-                (sum, group) =>
-                    sum + getCredit(group),
-                0
-            );
-
-        return {
-            lecture: finalLecture,
-            tutorial: finalTutorial,
-            practical: finalPractical,
-            credits: finalCredits,
-        };
-    };
-
-    // =========================================================
-    // DEPARTMENT NAME
-    // =========================================================
-
     const getDepartmentName = () => {
         const department = departments.find(
             (item) =>
-                item.code
-                    ?.trim()
-                    .toUpperCase() ===
-                departmentCode
-                    ?.trim()
-                    .toUpperCase()
+                item.code?.trim().toUpperCase() ===
+                departmentCode?.trim().toUpperCase()
         );
-
         return department?.name || departmentCode;
     };
-
-    // =========================================================
-    // SEMESTER TITLE
-    // =========================================================
 
     const getSemesterTitle = (semesterNumber) => {
         const titles = {
@@ -1352,16 +908,8 @@ function FacultyCurriculum() {
             7: "VII SEM",
             8: "VIII SEM",
         };
-
-        return (
-            titles[semesterNumber] ||
-            `Semester ${semesterNumber}`
-        );
+        return titles[semesterNumber] || `Semester ${semesterNumber}`;
     };
-
-    // =========================================================
-    // LOADING SCREEN
-    // =========================================================
 
     if (initialLoading) {
         return (
@@ -1369,7 +917,6 @@ function FacultyCurriculum() {
                 <div className="card border-0 shadow-sm">
                     <div className="card-body text-center py-5">
                         <div className="spinner-border text-primary"></div>
-
                         <p className="text-muted mt-3 mb-0">
                             Loading curriculum portal...
                         </p>
@@ -1379,179 +926,92 @@ function FacultyCurriculum() {
         );
     }
 
-    // =========================================================
-    // UI
-    // =========================================================
-
     return (
         <FacultyLayout>
-            {/* =================================================
-                HEADER
-            ================================================= */}
-
             <div className="mb-4">
                 <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center">
                     <div>
-                        <h2 className="fw-bold mb-1">
-                            Curriculum & Syllabus
-                        </h2>
-
+                        <h2 className="fw-bold mb-1">Curriculum & Syllabus</h2>
                         <p className="text-muted mb-0">
-                            View semester-wise curriculum,
-                            elective subjects, and syllabus files.
+                            View semester-wise curriculum, elective subjects, and syllabus files.
                         </p>
                     </div>
-
                     <div className="mt-3 mt-lg-0">
                         <span className="badge bg-primary-subtle text-primary px-3 py-2">
                             <i className="bi bi-person-badge me-1"></i>
-                            {user?.role}
-                            {" • "}
-                            {user?.departmentCode}
+                            {user?.role} - {user?.departmentCode}
                         </span>
                     </div>
                 </div>
             </div>
 
-            {/* =================================================
-                FILTER
-            ================================================= */}
-
+            {/* FILTERS */}
             <div className="card border-0 shadow-sm mb-4">
                 <div className="card-body p-4">
                     <div className="row g-3 align-items-end">
-                        {/* REGULATION */}
-
                         <div className="col-12 col-md-4">
-                            <label className="form-label fw-semibold">
-                                Regulation
-                            </label>
-
+                            <label className="form-label fw-semibold">Regulation</label>
                             <select
                                 className="form-select"
                                 value={regulationCode}
-                                onChange={
-                                    handleRegulationChange
-                                }
+                                onChange={handleRegulationChange}
                             >
-                                <option value="">
-                                    Select Regulation
-                                </option>
-
-                                {regulations.map(
-                                    (regulation) => (
-                                        <option
-                                            key={
-                                                regulation.code
-                                            }
-                                            value={
-                                                regulation.code
-                                            }
-                                        >
-                                            {regulation.code}
-                                        </option>
-                                    )
-                                )}
+                                <option value="">Select Regulation</option>
+                                {regulations.map((regulation) => (
+                                    <option
+                                        key={regulation.code}
+                                        value={regulation.code}
+                                    >
+                                        {regulation.code}
+                                    </option>
+                                ))}
                             </select>
                         </div>
-
-                        {/* DEPARTMENT */}
-
                         <div className="col-12 col-md-4">
-                            <label className="form-label fw-semibold">
-                                Department
-                            </label>
-
+                            <label className="form-label fw-semibold">Department</label>
                             <select
                                 className="form-select"
                                 value={departmentCode}
-                                onChange={
-                                    handleDepartmentChange
-                                }
+                                onChange={handleDepartmentChange}
                             >
-                                <option value="">
-                                    Select Department
-                                </option>
-
-                                {departments.map(
-                                    (department) => {
-                                        const code =
-                                            department.code
-                                                ?.trim()
-                                                .toUpperCase();
-
-                                        const own =
-                                            code ===
-                                            userDepartmentCode;
-
-                                        return (
-                                            <option
-                                                key={
-                                                    department.code
-                                                }
-                                                value={
-                                                    department.code
-                                                }
-                                            >
-                                                {department.name}
-                                                {" ("}
-                                                {department.code}
-                                                {")"}
-                                                {own
-                                                    ? " - My Department"
-                                                    : ""}
-                                            </option>
-                                        );
-                                    }
-                                )}
+                                <option value="">Select Department</option>
+                                {departments.map((department) => {
+                                    const code = department.code?.trim().toUpperCase();
+                                    const own = code === userDepartmentCode;
+                                    return (
+                                        <option
+                                            key={department.code}
+                                            value={department.code}
+                                        >
+                                            {department.name} ({department.code})
+                                            {own ? " - My Department" : ""}
+                                        </option>
+                                    );
+                                })}
                             </select>
                         </div>
-
-                        {/* SEMESTER */}
-
                         <div className="col-12 col-md-2">
-                            <label className="form-label fw-semibold">
-                                Semester
-                            </label>
-
+                            <label className="form-label fw-semibold">Semester</label>
                             <select
                                 className="form-select"
                                 value={semester}
-                                onChange={
-                                    handleSemesterChange
-                                }
+                                onChange={handleSemesterChange}
                             >
-                                <option value="">
-                                    Select Semester
-                                </option>
-
-                                <option value="ALL">
-                                    ALL
-                                </option>
-
+                                <option value="">Select Semester</option>
+                                <option value="ALL">ALL</option>
                                 {semesters.map((item) => (
-                                    <option
-                                        key={item.value}
-                                        value={item.value}
-                                    >
+                                    <option key={item.value} value={item.value}>
                                         {item.label}
                                     </option>
                                 ))}
                             </select>
                         </div>
-
-                        {/* VIEW BUTTON */}
-
                         <div className="col-12 col-md-2">
                             <button
                                 type="button"
                                 className="btn btn-primary w-100"
-                                onClick={
-                                    handleLoadCurriculum
-                                }
-                                disabled={
-                                    curriculumLoading
-                                }
+                                onClick={handleLoadCurriculum}
+                                disabled={curriculumLoading}
                             >
                                 {curriculumLoading ? (
                                     <>
@@ -1570,81 +1030,52 @@ function FacultyCurriculum() {
                 </div>
             </div>
 
-            {/* =================================================
-                VIEW ONLY NOTICE
-            ================================================= */}
-
-            {curricula.length > 0 && !canEdit && (
+            {/* NOTICE BANNER */}
+            {curricula.length > 0 && !isOwnDepartment && (
                 <div className="alert alert-info border-0 shadow-sm">
                     <i className="bi bi-info-circle me-2"></i>
-
-                    You are viewing the
-                    <strong className="mx-1">
-                        {getDepartmentName()}
-                    </strong>
-                    curriculum.
-
+                    You are viewing the <strong className="mx-1">{getDepartmentName()}</strong> curriculum.
                     <span className="d-block mt-1">
-                        <i className="bi bi-eye me-1"></i>
-                        Syllabus files can be viewed, but upload
-                        is available only to HOD or DEAN of their
-                        own department.
+                        <i className="bi bi-check2-circle text-success me-1"></i>
+                        You can <strong>upload and replace Elective syllabi</strong> across departments. Core courses can only be uploaded by the department's own faculty.
                     </span>
                 </div>
             )}
 
-            {/* =================================================
-                CURRICULUM
-            ================================================= */}
-
+            {/* CURRICULUM TABLES */}
             {curricula.length > 0 && (
                 <div>
                     {curricula.map((curriculum) => {
-                        const courses = (
-                            curriculum.courses || []
-                        ).filter(
-                            (course) =>
-                                !isExcludedCourse(course)
-                        );
+                        const { hasAltTrack, track1Items, track2Items } = getSemesterTracks(curriculum);
 
-                        const electiveGroups =
-                            curriculum.electiveGroups || [];
-
-                        if (
-                            courses.length === 0 &&
-                            electiveGroups.length === 0
-                        ) {
+                        if (track1Items.length === 0 && track2Items.length === 0) {
                             return null;
                         }
 
-                        const total =
-                            totalForSemester(curriculum);
+                        // Track 1 totals
+                        const track1Lecture = track1Items.reduce((s, x) => s + (Number(x.data.lecture) || 0), 0);
+                        const track1Tutorial = track1Items.reduce((s, x) => s + (Number(x.data.tutorial) || 0), 0);
+                        const track1Practical = track1Items.reduce((s, x) => s + (Number(x.data.practical) || 0), 0);
+                        const track1Credits = track1Items.reduce((s, x) => s + getCredit(x.data), 0);
+
+                        // Track 2 totals
+                        const track2Lecture = track2Items.reduce((s, x) => s + (Number(x.data.lecture) || 0), 0);
+                        const track2Tutorial = track2Items.reduce((s, x) => s + (Number(x.data.tutorial) || 0), 0);
+                        const track2Practical = track2Items.reduce((s, x) => s + (Number(x.data.practical) || 0), 0);
+                        const track2Credits = track2Items.reduce((s, x) => s + getCredit(x.data), 0);
 
                         return (
                             <div
                                 key={curriculum.semester}
                                 className="card border-0 shadow-sm mb-5"
                             >
-                                {/* SEMESTER HEADER */}
-
-                                <div className="card-header bg-primary text-white py-3">
+                                <div className="card-header bg-primary text-white py-2">
                                     <div className="d-flex justify-content-between align-items-center">
-                                        <div>
-                                            <small className="opacity-75">
-                                                {regulationCode}
-                                                {" • "}
-                                                {departmentCode}
-                                            </small>
-
-                                            <h4 className="fw-bold mb-0 mt-1">
-                                                {getSemesterTitle(
-                                                    curriculum.semester
-                                                )}
-                                            </h4>
-                                        </div>
-
-                                        {canEdit && (
-                                            <span className="badge bg-success px-3 py-2">
+                                        <h5 className="fw-bold mb-0">
+                                            {getSemesterTitle(curriculum.semester)}
+                                        </h5>
+                                        {isOwnDepartment && (
+                                            <span className="badge bg-success px-3 py-1">
                                                 <i className="bi bi-pencil-square me-1"></i>
                                                 Own Department
                                             </span>
@@ -1652,376 +1083,194 @@ function FacultyCurriculum() {
                                     </div>
                                 </div>
 
-                                {/* TABLE */}
-
                                 <div className="table-responsive">
-                                    <table className="table table-bordered align-middle mb-0">
-                                        <thead className="table-light text-center">
+                                    <table className="table table-bordered align-middle mb-0 text-center">
+                                        <thead className="table-primary text-dark fw-semibold">
                                             <tr>
-                                                <th
-                                                    style={{
-                                                        width: "70px",
-                                                    }}
-                                                >
-                                                    S.No.
-                                                </th>
-
-                                                <th
-                                                    style={{
-                                                        minWidth: "160px",
-                                                    }}
-                                                >
-                                                    Course Code
-                                                </th>
-
-                                                <th
-                                                    style={{
-                                                        minWidth: "320px",
-                                                    }}
-                                                >
-                                                    Course / Elective
-                                                </th>
-
-                                                <th
-                                                    style={{
-                                                        width: "70px",
-                                                    }}
-                                                >
-                                                    L
-                                                </th>
-
-                                                <th
-                                                    style={{
-                                                        width: "70px",
-                                                    }}
-                                                >
-                                                    R
-                                                </th>
-
-                                                <th
-                                                    style={{
-                                                        width: "70px",
-                                                    }}
-                                                >
-                                                    P
-                                                </th>
-
-                                                <th
-                                                    style={{
-                                                        width: "80px",
-                                                    }}
-                                                >
-                                                    C
-                                                </th>
-
-                                                <th
-                                                    style={{
-                                                        minWidth: "190px",
-                                                    }}
-                                                >
-                                                    Syllabus
-                                                </th>
+                                                <th style={{ width: "65px" }} rowSpan="2">S.No.</th>
+                                                <th style={{ minWidth: "150px" }} rowSpan="2">Course Code</th>
+                                                <th style={{ minWidth: "350px" }} rowSpan="2" className="text-start ps-3">Course</th>
+                                                <th colSpan="4">Hours / Week</th>
+                                                <th style={{ minWidth: "180px" }} rowSpan="2">Syllabus</th>
+                                            </tr>
+                                            <tr>
+                                                <th style={{ width: "60px" }}>L</th>
+                                                <th style={{ width: "60px" }}>R</th>
+                                                <th style={{ width: "60px" }}>P</th>
+                                                <th style={{ width: "60px" }}>C</th>
                                             </tr>
                                         </thead>
-
                                         <tbody>
-                                            {/* =================================================
-                                                NORMAL COURSES
-                                            ================================================= */}
+                                            {/* ================= TRACK 1 ================= */}
+                                            {track1Items.map((entry, idx) => {
+                                                const serial = idx + 1;
 
-                                            {courses.map(
-                                                (
-                                                    course,
-                                                    index
-                                                ) => (
-                                                    <tr
-                                                        key={`course-${course.id}`}
-                                                    >
-                                                        <td className="text-center">
-                                                            {index + 1}
-                                                        </td>
+                                                if (entry.type === "course") {
+                                                    const course = entry.data;
+                                                    return (
+                                                        <tr key={`t1-course-${course.id}`}>
+                                                            <td>{serial}</td>
+                                                            <td className="fw-semibold text-nowrap">
+                                                                {course.courseCode || ""}
+                                                            </td>
+                                                            <td className="text-start ps-3 fw-semibold">
+                                                                {course.courseName}
+                                                            </td>
+                                                            <td>{formatNumber(course.lecture)}</td>
+                                                            <td>{formatNumber(course.tutorial)}</td>
+                                                            <td>{formatNumber(course.practical)}</td>
+                                                            <td className="fw-semibold">{formatNumber(getCredit(course))}</td>
+                                                            <td>{renderSyllabusActions(course, "course")}</td>
+                                                        </tr>
+                                                    );
+                                                }
 
-                                                        <td className="fw-semibold text-nowrap">
-                                                            {course.courseCode ||
-                                                                "—"}
-                                                        </td>
-
-                                                        <td>
-                                                            <div className="fw-semibold">
-                                                                {course.courseName ||
-                                                                    "Unnamed Course"}
-                                                            </div>
-
-                                                            {course.courseType && (
-                                                                <small className="text-muted">
-                                                                    {
-                                                                        course.courseType
-                                                                    }
-                                                                </small>
-                                                            )}
-                                                        </td>
-
-                                                        <td className="text-center">
-                                                            {formatNumber(
-                                                                course.lecture
-                                                            )}
-                                                        </td>
-
-                                                        <td className="text-center">
-                                                            {formatNumber(
-                                                                course.tutorial
-                                                            )}
-                                                        </td>
-
-                                                        <td className="text-center">
-                                                            {formatNumber(
-                                                                course.practical
-                                                            )}
-                                                        </td>
-
-                                                        <td className="text-center fw-semibold">
-                                                            {formatNumber(
-                                                                getCredit(
-                                                                    course
-                                                                )
-                                                            )}
-                                                        </td>
-
-                                                        <td className="text-center">
-                                                            {renderSyllabusActions(
-                                                                course,
-                                                                "course"
-                                                            )}
-                                                        </td>
-                                                    </tr>
-                                                )
-                                            )}
-
-                                            {/* =================================================
-                                                ELECTIVE GROUPS
-                                            ================================================= */}
-
-                                            {electiveGroups.map((group) => {
-                                                const open =
-                                                    isOpenElective(group);
-
-                                                const groupSubjects =
-                                                    subjects[group.id] || [];
-
-                                                const isExpanded = Boolean(
-                                                    expandedGroups[group.id]
-                                                );
+                                                const group = entry.data;
+                                                const groupSubjects = subjects[group.id] || [];
+                                                const isExpanded = Boolean(expandedGroups[group.id]);
 
                                                 return (
-                                                    <tr
-                                                        key={`elective-${group.id}`}
-                                                    >
-                                                        <td
-                                                            colSpan="8"
-                                                            className="p-0"
-                                                        >
-                                                            {/* ELECTIVE GROUP HEADER */}
-
-                                                            <div
-                                                                className={`p-3 ${open
-                                                                    ? "bg-warning-subtle"
-                                                                    : "bg-secondary-subtle"
-                                                                    }`}
-                                                            >
-                                                                <div className="d-flex align-items-center gap-2">
-                                                                    {/* EXPAND/COLLAPSE BUTTON */}
-
-                                                                    <button
-                                                                        type="button"
-                                                                        className="btn btn-sm btn-outline-dark d-flex align-items-center justify-content-center"
-                                                                        style={{
-                                                                            width: "40px",
-                                                                            height: "38px",
-                                                                            padding: 0,
-                                                                        }}
-                                                                        onClick={() =>
-                                                                            handleToggleElectiveGroup(
-                                                                                group
-                                                                            )
-                                                                        }
-                                                                        title={
-                                                                            isExpanded
-                                                                                ? "Collapse subjects"
-                                                                                : "Expand subjects"
-                                                                        }
-                                                                    >
-                                                                        <i
-                                                                            className={`bi ${isExpanded
-                                                                                ? "bi-chevron-up"
-                                                                                : "bi-chevron-down"
-                                                                                }`}
-                                                                        ></i>
-                                                                    </button>
-
-                                                                    {/* ELECTIVE TITLE */}
-
-                                                                    <div>
-                                                                        <div className="fs-5 fw-bold">
-                                                                            {group.name ||
-                                                                                group.groupName ||
-                                                                                "Unnamed Elective Group"}
-                                                                        </div>
-
-                                                                        <small className="text-muted">
-                                                                            Click the arrow to view subjects
-                                                                        </small>
-                                                                    </div>
+                                                    <React.Fragment key={`t1-group-${group.id}`}>
+                                                        <tr>
+                                                            <td>{serial}</td>
+                                                            <td></td>
+                                                            <td className="text-start ps-3">
+                                                                <div
+                                                                    className="d-flex align-items-center justify-content-between text-primary fw-semibold"
+                                                                    style={{ cursor: "pointer" }}
+                                                                    onClick={() => handleToggleElectiveGroup(group)}
+                                                                >
+                                                                    <span>{group.name}</span>
+                                                                    <span className="badge bg-primary-subtle text-primary small">
+                                                                        <i className={`bi bi-chevron-${isExpanded ? "up" : "down"} me-1`}></i>
+                                                                        {isExpanded ? "Hide" : "View"}
+                                                                    </span>
                                                                 </div>
+                                                            </td>
+                                                            <td>{formatNumber(group.lecture)}</td>
+                                                            <td>{formatNumber(group.tutorial)}</td>
+                                                            <td>{formatNumber(group.practical)}</td>
+                                                            <td className="fw-semibold">{formatNumber(getCredit(group))}</td>
+                                                            <td>
+                                                                <span className="badge bg-secondary-subtle text-secondary">
+                                                                    Elective Slot
+                                                                </span>
+                                                            </td>
+                                                        </tr>
 
-                                                                {/* EXPANDED SUBJECT TABLE */}
-
-                                                                {isExpanded && (
-                                                                    <div className="mt-3 p-3 bg-light border rounded">
+                                                        {/* EXPANDABLE ELECTIVE SUBJECTS */}
+                                                        {isExpanded && (
+                                                            <tr className="bg-light">
+                                                                <td colSpan="8" className="p-3">
+                                                                    <div className="border rounded bg-white p-3 shadow-sm text-start">
                                                                         <div className="d-flex justify-content-between align-items-center mb-3">
-                                                                            <h6 className="fw-bold mb-0">
+                                                                            <h6 className="fw-bold mb-0 text-primary">
                                                                                 <i className="bi bi-list-ul me-2"></i>
-                                                                                Subjects in {" "}
-                                                                                {group.name ||
-                                                                                    group.groupName ||
-                                                                                    "Elective Group"}
+                                                                                Subjects in {group.name}
                                                                             </h6>
-
                                                                             {subjectsLoading[group.id] && (
                                                                                 <span className="spinner-border spinner-border-sm text-primary"></span>
                                                                             )}
                                                                         </div>
-
                                                                         {subjectsLoading[group.id] ? (
-                                                                            <div className="text-muted">
+                                                                            <div className="text-muted small">
                                                                                 <span className="spinner-border spinner-border-sm me-2"></span>
                                                                                 Loading subjects...
                                                                             </div>
                                                                         ) : groupSubjects.length === 0 ? (
-                                                                            <div className="alert alert-warning mb-0">
+                                                                            <div className="alert alert-warning mb-0 small">
                                                                                 No subjects available in this group.
                                                                             </div>
                                                                         ) : (
                                                                             <div className="table-responsive">
-                                                                                <table className="table table-sm table-bordered align-middle mb-0 bg-white">
+                                                                                <table className="table table-sm table-bordered align-middle mb-0 text-center">
                                                                                     <thead className="table-secondary">
                                                                                         <tr>
-                                                                                            <th>S.No.</th>
-                                                                                            <th>Subject Code</th>
-                                                                                            <th>Subject Name</th>
-                                                                                            <th className="text-center">L</th>
-                                                                                            <th className="text-center">R</th>
-                                                                                            <th className="text-center">P</th>
-                                                                                            <th className="text-center">C</th>
-                                                                                            <th className="text-center">Syllabus</th>
+                                                                                            <th style={{ width: "50px" }}>#</th>
+                                                                                            <th style={{ minWidth: "130px" }}>Subject Code</th>
+                                                                                            <th style={{ minWidth: "260px" }} className="text-start ps-2">Subject Name</th>
+                                                                                            <th style={{ width: "50px" }}>L</th>
+                                                                                            <th style={{ width: "50px" }}>R</th>
+                                                                                            <th style={{ width: "50px" }}>P</th>
+                                                                                            <th style={{ width: "50px" }}>C</th>
+                                                                                            <th style={{ minWidth: "170px" }}>Syllabus</th>
                                                                                         </tr>
                                                                                     </thead>
-
                                                                                     <tbody>
-                                                                                        {groupSubjects.map(
-                                                                                            (subject, subjectIndex) => (
-                                                                                                <tr
-                                                                                                    key={`group-${group.id}-subject-${subject.id}`}
-                                                                                                >
-                                                                                                    <td>
-                                                                                                        {subjectIndex + 1}
-                                                                                                    </td>
-
-                                                                                                    <td className="fw-semibold text-nowrap">
-                                                                                                        {subject.courseCode ||
-                                                                                                            subject.subjectCode ||
-                                                                                                            "—"}
-                                                                                                    </td>
-
-                                                                                                    <td>
-                                                                                                        {subject.courseName ||
-                                                                                                            subject.subjectName ||
-                                                                                                            "Unnamed Subject"}
-                                                                                                    </td>
-
-                                                                                                    <td className="text-center">
-                                                                                                        {formatNumber(
-                                                                                                            subject.lecture
-                                                                                                        )}
-                                                                                                    </td>
-
-                                                                                                    <td className="text-center">
-                                                                                                        {formatNumber(
-                                                                                                            subject.tutorial
-                                                                                                        )}
-                                                                                                    </td>
-
-                                                                                                    <td className="text-center">
-                                                                                                        {formatNumber(
-                                                                                                            subject.practical
-                                                                                                        )}
-                                                                                                    </td>
-
-                                                                                                    <td className="text-center">
-                                                                                                        {formatNumber(
-                                                                                                            getCredit(subject)
-                                                                                                        )}
-                                                                                                    </td>
-
-                                                                                                    <td className="text-center">
-                                                                                                        {renderSyllabusActions(
-                                                                                                            subject,
-                                                                                                            "elective"
-                                                                                                        )}
-                                                                                                    </td>
-                                                                                                </tr>
-                                                                                            )
-                                                                                        )}
+                                                                                        {groupSubjects.map((sub, sIdx) => (
+                                                                                            <tr key={`group-${group.id}-sub-${sub.id}`}>
+                                                                                                <td>{sIdx + 1}</td>
+                                                                                                <td className="fw-semibold text-nowrap">{sub.courseCode || ""}</td>
+                                                                                                <td className="text-start ps-2">{sub.courseName}</td>
+                                                                                                <td>{formatNumber(sub.lecture)}</td>
+                                                                                                <td>{formatNumber(sub.tutorial)}</td>
+                                                                                                <td>{formatNumber(sub.practical)}</td>
+                                                                                                <td className="fw-semibold">{formatNumber(getCredit(sub))}</td>
+                                                                                                <td>{renderSyllabusActions(sub, "elective")}</td>
+                                                                                            </tr>
+                                                                                        ))}
                                                                                     </tbody>
                                                                                 </table>
                                                                             </div>
                                                                         )}
                                                                     </div>
-                                                                )}
-                                                            </div>
-                                                        </td>
-                                                    </tr>
+                                                                </td>
+                                                            </tr>
+                                                        )}
+                                                    </React.Fragment>
                                                 );
                                             })}
-                                        </tbody>
 
-                                        {/* TOTAL */}
-
-                                        <tfoot>
-                                            <tr className="table-dark fw-bold">
-                                                <td
-                                                    colSpan="3"
-                                                    className="text-end"
-                                                >
-                                                    TOTAL
-                                                </td>
-
-                                                <td className="text-center">
-                                                    {formatNumber(
-                                                        total.lecture
-                                                    )}
-                                                </td>
-
-                                                <td className="text-center">
-                                                    {formatNumber(
-                                                        total.tutorial
-                                                    )}
-                                                </td>
-
-                                                <td className="text-center">
-                                                    {formatNumber(
-                                                        total.practical
-                                                    )}
-                                                </td>
-
-                                                <td className="text-center">
-                                                    {formatNumber(
-                                                        total.credits
-                                                    )}
-                                                </td>
-
+                                            {/* TRACK 1 TOTAL */}
+                                            <tr className="table-light fw-bold">
+                                                <td colSpan="3" className="text-end pe-3">Total</td>
+                                                <td>{formatNumber(track1Lecture)}</td>
+                                                <td>{formatNumber(track1Tutorial)}</td>
+                                                <td>{formatNumber(track1Practical)}</td>
+                                                <td>{formatNumber(track1Credits)}</td>
                                                 <td></td>
                                             </tr>
-                                        </tfoot>
+
+                                            {/* ================= ALTERNATIVE TRACK ("Or") ================= */}
+                                            {hasAltTrack && (
+                                                <>
+                                                    <tr className="table-secondary text-center fw-bold">
+                                                        <td colSpan="8" className="py-2 fs-6 text-uppercase">
+                                                            Or
+                                                        </td>
+                                                    </tr>
+
+                                                    {track2Items.map((entry, idx) => {
+                                                        const course = entry.data;
+                                                        return (
+                                                            <tr key={`t2-course-${course.id}`}>
+                                                                <td>{idx + 1}</td>
+                                                                <td className="fw-semibold text-nowrap">
+                                                                    {course.courseCode}
+                                                                </td>
+                                                                <td className="text-start ps-3 fw-semibold">
+                                                                    {course.courseName}
+                                                                </td>
+                                                                <td>{formatNumber(course.lecture)}</td>
+                                                                <td>{formatNumber(course.tutorial)}</td>
+                                                                <td>{formatNumber(course.practical)}</td>
+                                                                <td className="fw-semibold">{formatNumber(getCredit(course))}</td>
+                                                                <td>{renderSyllabusActions(course, "course")}</td>
+                                                            </tr>
+                                                        );
+                                                    })}
+
+                                                    <tr className="table-light fw-bold">
+                                                        <td colSpan="3" className="text-end pe-3">Total</td>
+                                                        <td>{formatNumber(track2Lecture)}</td>
+                                                        <td>{formatNumber(track2Tutorial)}</td>
+                                                        <td>{formatNumber(track2Practical)}</td>
+                                                        <td>{formatNumber(track2Credits)}</td>
+                                                        <td></td>
+                                                    </tr>
+                                                </>
+                                            )}
+                                        </tbody>
                                     </table>
                                 </div>
                             </div>
@@ -2030,83 +1279,152 @@ function FacultyCurriculum() {
                 </div>
             )}
 
-            {/* =================================================
-                UPLOAD SYLLABUS MODAL
-            ================================================= */}
+            {/* ========================================================= */}
+            {/* VIEW REJECTION REMARK MODAL                               */}
+            {/* ========================================================= */}
+            {remarksModal.open && remarksModal.item && (
+                <div
+                    className="modal fade show d-block"
+                    tabIndex="-1"
+                    role="dialog"
+                    style={{ backgroundColor: "rgba(0, 0, 0, 0.55)", zIndex: 1060 }}
+                >
+                    <div className="modal-dialog modal-dialog-centered" role="document">
+                        <div className="modal-content border-0 shadow rounded-4">
+                            <div className="modal-header border-0 pb-0">
+                                <div className="d-flex align-items-center gap-2">
+                                    <div className="bg-danger-subtle text-danger rounded-circle p-2 d-flex align-items-center justify-content-center" style={{ width: "40px", height: "40px" }}>
+                                        <i className="bi bi-chat-right-text fs-5"></i>
+                                    </div>
+                                    <div>
+                                        <h5 className="modal-title fw-bold text-danger mb-0">
+                                            Rejection Remarks
+                                        </h5>
+                                        <small className="text-muted">
+                                            {remarksModal.item.courseCode || ""} {remarksModal.item.courseName || remarksModal.item.subjectName}
+                                        </small>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    className="btn-close"
+                                    onClick={closeRemarksModal}
+                                ></button>
+                            </div>
 
+                            <div className="modal-body p-4">
+                                {remarksModal.loading ? (
+                                    <div className="text-center py-4 text-muted">
+                                        <span className="spinner-border spinner-border-sm me-2"></span>
+                                        Loading remarks...
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="alert alert-danger border-0 bg-danger-subtle text-danger-emphasis mb-3">
+                                            <div className="fw-semibold mb-1">
+                                                <i className="bi bi-exclamation-triangle-fill me-2"></i>
+                                                Reason for Rejection:
+                                            </div>
+                                            <p className="mb-0 fs-6 ps-4">
+                                                "{remarksModal.reason || "No explicit reason was provided."}"
+                                            </p>
+                                        </div>
+
+                                        <div className="text-muted small d-flex justify-content-between">
+                                            <span>
+                                                Reviewed By: <strong>{remarksModal.reviewedBy}</strong>
+                                            </span>
+                                            {remarksModal.reviewedAt && (
+                                                <span>
+                                                    {new Date(remarksModal.reviewedAt).toLocaleString()}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+
+                            <div className="modal-footer border-0 pt-0">
+                                <button
+                                    type="button"
+                                    className="btn btn-light"
+                                    onClick={closeRemarksModal}
+                                >
+                                    Close
+                                </button>
+                                {(remarksModal.type === "elective" ? canUploadElective : canUploadCourse) && (
+                                    <button
+                                        type="button"
+                                        className="btn btn-primary"
+                                        onClick={() => {
+                                            const itemToUpload = remarksModal.item;
+                                            const typeToUpload = remarksModal.type;
+                                            closeRemarksModal();
+                                            openUploadModal(typeToUpload, itemToUpload);
+                                        }}
+                                    >
+                                        <i className="bi bi-upload me-1"></i>
+                                        Re-Upload Now
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ========================================================= */}
+            {/* UPLOAD SYLLABUS MODAL                                     */}
+            {/* ========================================================= */}
             {uploadModal.open && (
                 <div
                     className="modal fade show d-block"
                     tabIndex="-1"
                     role="dialog"
-                    style={{
-                        backgroundColor:
-                            "rgba(0, 0, 0, 0.55)",
-                    }}
+                    style={{ backgroundColor: "rgba(0, 0, 0, 0.55)", zIndex: 1050 }}
                 >
-                    <div
-                        className="modal-dialog modal-dialog-centered"
-                        role="document"
-                    >
+                    <div className="modal-dialog modal-dialog-centered" role="document">
                         <div className="modal-content border-0 shadow">
                             <div className="modal-header">
                                 <h5 className="modal-title fw-bold">
                                     <i className="bi bi-file-earmark-pdf text-danger me-2"></i>
                                     Upload Syllabus
                                 </h5>
-
                                 <button
                                     type="button"
                                     className="btn-close"
-                                    onClick={
-                                        closeUploadModal
-                                    }
+                                    onClick={closeUploadModal}
                                     disabled={uploading}
                                 ></button>
                             </div>
-
                             <div className="modal-body">
                                 <div className="alert alert-info small">
                                     <i className="bi bi-info-circle me-2"></i>
-                                    Only PDF files are allowed.
-                                    Maximum file size is 10 MB.
+                                    Only PDF files are allowed. Maximum file size is 10 MB.
                                 </div>
-
                                 <div className="mb-3">
-                                    <label className="form-label fw-semibold">
-                                        Subject
-                                    </label>
-
+                                    <label className="form-label fw-semibold">Subject</label>
                                     <input
                                         type="text"
                                         className="form-control"
                                         value={
-                                            uploadModal.item
-                                                ?.courseName ||
-                                            uploadModal.item
-                                                ?.subjectName ||
+                                            uploadModal.item?.courseName ||
+                                            uploadModal.item?.subjectName ||
                                             "Selected Subject"
                                         }
                                         readOnly
                                     />
                                 </div>
-
                                 <div className="mb-3">
-                                    <label className="form-label fw-semibold">
-                                        Select PDF File
-                                    </label>
-
+                                    <label className="form-label fw-semibold">Select PDF File</label>
                                     <input
                                         type="file"
                                         className="form-control"
                                         accept="application/pdf,.pdf"
-                                        onChange={
-                                            handleFileChange
-                                        }
+                                        onChange={handleFileChange}
                                         disabled={uploading}
                                     />
                                 </div>
-
                                 {selectedFile && (
                                     <div className="alert alert-success py-2">
                                         <i className="bi bi-check-circle me-2"></i>
@@ -2114,29 +1432,20 @@ function FacultyCurriculum() {
                                     </div>
                                 )}
                             </div>
-
                             <div className="modal-footer">
                                 <button
                                     type="button"
                                     className="btn btn-secondary"
-                                    onClick={
-                                        closeUploadModal
-                                    }
+                                    onClick={closeUploadModal}
                                     disabled={uploading}
                                 >
                                     Cancel
                                 </button>
-
                                 <button
                                     type="button"
                                     className="btn btn-primary"
-                                    onClick={
-                                        handleUploadSyllabus
-                                    }
-                                    disabled={
-                                        uploading ||
-                                        !selectedFile
-                                    }
+                                    onClick={handleUploadSyllabus}
+                                    disabled={uploading || !selectedFile}
                                 >
                                     {uploading ? (
                                         <>
