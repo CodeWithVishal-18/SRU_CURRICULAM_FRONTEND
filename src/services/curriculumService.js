@@ -7,12 +7,14 @@ import api from "./api";
 export const getSemesterCurriculum = async (
     regulationCode,
     departmentCode,
-    semester
+    semester,
+    programCode = null
 ) => {
+    const params = programCode ? { programCode } : {};
     const response = await api.get(
-        `/api/curriculum/${regulationCode}/${departmentCode}/${semester}`
+        `/api/curriculum/${regulationCode}/${departmentCode}/${semester}`,
+        { params }
     );
-
     return response.data;
 };
 

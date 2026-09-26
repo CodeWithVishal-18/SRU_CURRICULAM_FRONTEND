@@ -1,696 +1,275 @@
-import { useEffect, useState } from "react";
-
+import { useEffect, useState, useMemo } from "react";
 import { toast } from "react-toastify";
-
 import AdminLayout from "../../layouts/AdminLayout";
-
-import {
-    getAllRegulations
-} from "../../services/regulationService";
-
-import {
-    getAllDepartments
-} from "../../services/departmentService";
-
-import {
-    uploadCourseStructure
-} from "../../services/courseStructureService";
-
+import { getAllRegulations } from "../../services/regulationService";
+import { getAllDepartments } from "../../services/departmentService";
+import { getAllPrograms } from "../../services/programService";
+import { uploadCourseStructure } from "../../services/courseStructureService";
 
 function CourseStructure() {
+    const [regulations, setRegulations] = useState([]);
+    const [departments, setDepartments] = useState([]);
+    const [allPrograms, setAllPrograms] = useState([]);
 
-    // =====================================================
-    // STATE
-    // =====================================================
+    const [regulationCode, setRegulationCode] = useState("");
+    const [departmentCode, setDepartmentCode] = useState("");
+    const [programCode, setProgramCode] = useState("");
+    const [file, setFile] = useState(null);
 
-    const [regulations, setRegulations] =
-        useState([]);
-
-    const [departments, setDepartments] =
-        useState([]);
-
-    const [regulationCode, setRegulationCode] =
-        useState("");
-
-    const [departmentCode, setDepartmentCode] =
-        useState("");
-
-    const [file, setFile] =
-        useState(null);
-
-    const [loading, setLoading] =
-        useState(true);
-
-    const [uploading, setUploading] =
-        useState(false);
-
-    // =====================================================
-    // LOAD REGULATIONS + DEPARTMENTS
-    // =====================================================
+    const [loading, setLoading] = useState(true);
+    const [uploading, setUploading] = useState(false);
 
     useEffect(() => {
-
         const loadData = async () => {
-
             try {
-
                 setLoading(true);
-
-                const [
-                    regulationResponse,
-                    departmentResponse
-                ] = await Promise.all([
+                const [regRes, deptRes, progRes] = await Promise.all([
                     getAllRegulations(),
-                    getAllDepartments()
+                    getAllDepartments(),
+                    getAllPrograms().catch(() => ({ data: [] })),
                 ]);
-
-                setRegulations(
-                    regulationResponse.data || []
-                );
-
-                setDepartments(
-                    departmentResponse.data || []
-                );
-
+                setRegulations(regRes?.data || []);
+                setDepartments(deptRes?.data || []);
+                setAllPrograms(progRes?.data || []);
             } catch (error) {
-
-                console.error(
-                    "Failed to load data:",
-                    error
-                );
-
-                toast.error(
-                    "Failed to load regulations or departments"
-                );
-
+                toast.error("Failed to load regulations, departments or programs");
             } finally {
-
                 setLoading(false);
             }
         };
-
         loadData();
-
     }, []);
 
-    // =====================================================
-    // FILE CHANGE
-    // =====================================================
+    // Active regulation object
+    const selectedRegulation = useMemo(
+        () => regulations.find((r) => r.code === regulationCode),
+        [regulations, regulationCode]
+    );
 
-    const handleFileChange = (event) => {
+    // Filter programmes based on Department AND the Level defined by the chosen Regulation
+    const filteredPrograms = useMemo(() => {
+        if (!departmentCode || !selectedRegulation) return [];
+        const normDept = departmentCode.trim().toUpperCase();
+        const regLevel = selectedRegulation.level || "UG";
 
-        const selectedFile =
-            event.target.files[0];
+        return allPrograms.filter(
+            (p) =>
+                (p.departmentCode || "").toUpperCase() === normDept &&
+                (p.level || "UG").toUpperCase() === regLevel.toUpperCase()
+        );
+    }, [departmentCode, selectedRegulation, allPrograms]);
 
-        if (!selectedFile) {
-            return;
-        }
+    const selectedProgram = useMemo(
+        () => allPrograms.find((p) => p.code === programCode),
+        [allPrograms, programCode]
+    );
 
-        const fileName =
-            selectedFile.name.toLowerCase();
-
-        const isExcel =
-            fileName.endsWith(".xlsx") ||
-            fileName.endsWith(".xls");
-
-        if (!isExcel) {
-
-            toast.error(
-                "Please select an Excel file (.xlsx or .xls)"
-            );
-
-            event.target.value = "";
-
-            setFile(null);
-
-            return;
-        }
-
-        setFile(selectedFile);
+    const handleRegulationChange = (e) => {
+        setRegulationCode(e.target.value);
+        setProgramCode("");
     };
 
-    // =====================================================
-    // UPLOAD
-    // =====================================================
+    const handleDepartmentChange = (e) => {
+        setDepartmentCode(e.target.value);
+        setProgramCode("");
+    };
 
-    const handleUpload = async (event) => {
+    const handleFileChange = (e) => {
+        const selected = e.target.files[0];
+        if (!selected) return;
+        const name = selected.name.toLowerCase();
+        if (!name.endsWith(".xlsx") && !name.endsWith(".xls")) {
+            toast.error("Please select an Excel file (.xlsx or .xls)");
+            e.target.value = "";
+            setFile(null);
+            return;
+        }
+        setFile(selected);
+    };
 
-        event.preventDefault();
-
-        // -------------------------------------------------
-        // VALIDATION
-        // -------------------------------------------------
-
+    const handleUpload = async (e) => {
+        e.preventDefault();
         if (!regulationCode) {
-
-            toast.error(
-                "Please select a regulation"
-            );
-
+            toast.error("Please select a regulation");
             return;
         }
-
         if (!departmentCode) {
-
-            toast.error(
-                "Please select a department"
-            );
-
+            toast.error("Please select a department");
             return;
         }
-
+        if (!programCode) {
+            toast.error("Please select a degree programme");
+            return;
+        }
         if (!file) {
-
-            toast.error(
-                "Please select an Excel file"
-            );
-
+            toast.error("Please select an Excel file");
             return;
         }
 
         try {
-
             setUploading(true);
-
-            const response =
-                await uploadCourseStructure(
-                    regulationCode,
-                    departmentCode,
-                    file
-                );
-
-            toast.success(
-                response.message ||
-                "Course structure uploaded successfully"
+            const level = selectedRegulation?.level || "UG";
+            const response = await uploadCourseStructure(
+                regulationCode,
+                departmentCode,
+                level,
+                programCode,
+                file
             );
-
-            // Clear file after successful upload
+            toast.success(response?.message || "Course structure uploaded successfully");
             setFile(null);
-
-            const fileInput =
-                document.getElementById(
-                    "courseStructureFile"
-                );
-
-            if (fileInput) {
-                fileInput.value = "";
-            }
-
+            const input = document.getElementById("courseStructureFile");
+            if (input) input.value = "";
         } catch (error) {
-
-            console.error(
-                "Course structure upload failed:",
-                error
-            );
-
-            toast.error(
-                error.response
-                    ?.data
-                    ?.message ||
-                "Failed to upload course structure"
-            );
-
+            toast.error(error.response?.data?.message || "Upload failed");
         } finally {
-
             setUploading(false);
         }
     };
 
-    // =====================================================
-    // SELECTED REGULATION
-    // =====================================================
-
-    const selectedRegulation =
-        regulations.find(
-            (regulation) =>
-                regulation.code ===
-                regulationCode
-        );
-
-    // =====================================================
-    // SELECTED DEPARTMENT
-    // =====================================================
-
-    const selectedDepartment =
-        departments.find(
-            (department) =>
-                department.code ===
-                departmentCode
-        );
-
     return (
         <AdminLayout>
-
-            {/* =================================================
-                HEADER
-            ================================================= */}
-
             <div className="mb-4">
-
-                <h2 className="fw-bold mb-1">
-                    Course Structure
-                </h2>
-
+                <h2 className="fw-bold mb-1">Course Structure</h2>
                 <p className="text-muted mb-0">
-                    Upload and manage academic
-                    course structures.
+                    Upload curriculum Excel sheets linked to regulation, department, and degree programme.
                 </p>
-
             </div>
 
-
-            {/* =================================================
-                MAIN CARD
-            ================================================= */}
-
-            <div className="row justify-content-center">
-
-                <div className="col-12 col-xl-9">
-
-                    <div className="card border-0 shadow-sm">
-
-                        <div className="card-body p-4 p-lg-5">
-
-                            {/* =================================================
-                                TITLE
-                            ================================================= */}
-
-                            <div className="d-flex align-items-center mb-4">
-
-                                <div
-                                    className="bg-primary-subtle text-primary rounded-3 d-flex align-items-center justify-content-center me-3"
-                                    style={{
-                                        width: "50px",
-                                        height: "50px"
-                                    }}
-                                >
-
-                                    <i className="bi bi-file-earmark-spreadsheet fs-4"></i>
-
+            <div className="card border-0 shadow-sm col-xl-10 mx-auto">
+                <div className="card-body p-4 p-lg-5">
+                    {loading ? (
+                        <div className="text-center py-5">
+                            <div className="spinner-border text-primary"></div>
+                            <p className="text-muted mt-2">Loading...</p>
+                        </div>
+                    ) : (
+                        <form onSubmit={handleUpload}>
+                            <div className="row g-4">
+                                {/* 1. REGULATION (Has Level UG/PG) */}
+                                <div className="col-12 col-md-6">
+                                    <label className="form-label fw-semibold">
+                                        Regulation <span className="text-danger">*</span>
+                                    </label>
+                                    <select
+                                        className="form-select form-select-lg"
+                                        value={regulationCode}
+                                        onChange={handleRegulationChange}
+                                        required
+                                    >
+                                        <option value="">Select Regulation</option>
+                                        {regulations.map((r) => (
+                                            <option key={r.code} value={r.code}>
+                                                {r.code} ({r.level || "UG"}) - {r.startYear}
+                                            </option>
+                                        ))}
+                                    </select>
                                 </div>
 
-                                <div>
-
-                                    <h5 className="fw-bold mb-1">
-                                        Upload Course Structure
-                                    </h5>
-
-                                    <p className="text-muted small mb-0">
-                                        Select the regulation,
-                                        department and Excel file.
-                                    </p>
-
+                                {/* 2. DEPARTMENT */}
+                                <div className="col-12 col-md-6">
+                                    <label className="form-label fw-semibold">
+                                        Department <span className="text-danger">*</span>
+                                    </label>
+                                    <select
+                                        className="form-select form-select-lg"
+                                        value={departmentCode}
+                                        onChange={handleDepartmentChange}
+                                        required
+                                    >
+                                        <option value="">Select Department</option>
+                                        {departments.map((d) => (
+                                            <option key={d.code} value={d.code}>
+                                                {d.name} ({d.code})
+                                            </option>
+                                        ))}
+                                    </select>
                                 </div>
 
+                                {/* 3. DEGREE PROGRAMME (Automatically filtered by Dept + Regulation Level) */}
+                                <div className="col-12">
+                                    <label className="form-label fw-semibold">
+                                        Degree Programme <span className="text-danger">*</span>
+                                    </label>
+                                    <select
+                                        className="form-select form-select-lg"
+                                        value={programCode}
+                                        onChange={(e) => setProgramCode(e.target.value)}
+                                        disabled={!regulationCode || !departmentCode}
+                                        required
+                                    >
+                                        <option value="">
+                                            {!regulationCode || !departmentCode
+                                                ? "Select Regulation and Department First"
+                                                : filteredPrograms.length === 0
+                                                ? `No ${selectedRegulation?.level || "UG"} programmes found under this department`
+                                                : "Select Programme"}
+                                        </option>
+                                        {filteredPrograms.map((p) => (
+                                            <option key={p.code} value={p.code}>
+                                                {p.name} ({p.totalSemesters} Semesters)
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
                             </div>
 
-
-                            {loading ? (
-
-                                <div className="text-center py-5">
-
-                                    <div
-                                        className="spinner-border text-primary"
-                                    ></div>
-
-                                    <p className="text-muted mt-3 mb-0">
-                                        Loading regulations
-                                        and departments...
-                                    </p>
-
-                                </div>
-
-                            ) : (
-
-                                <form
-                                    onSubmit={
-                                        handleUpload
-                                    }
-                                >
-
-                                    {/* =============================================
-                                        REGULATION + DEPARTMENT
-                                    ============================================= */}
-
-                                    <div className="row g-4">
-
-                                        {/* REGULATION */}
-
-                                        <div className="col-12 col-md-6">
-
-                                            <label className="form-label fw-semibold">
-
-                                                Regulation
-
-                                                <span className="text-danger">
-                                                    {" "}*
-                                                </span>
-
-                                            </label>
-
-                                            <select
-                                                className="form-select form-select-lg"
-                                                value={
-                                                    regulationCode
-                                                }
-                                                onChange={(event) =>
-                                                    setRegulationCode(
-                                                        event.target.value
-                                                    )
-                                                }
-                                            >
-
-                                                <option value="">
-                                                    Select Regulation
-                                                </option>
-
-                                                {regulations.map(
-                                                    (regulation) => (
-
-                                                        <option
-                                                            key={
-                                                                regulation.code
-                                                            }
-                                                            value={
-                                                                regulation.code
-                                                            }
-                                                        >
-
-                                                            {
-                                                                regulation.code
-                                                            }
-
-                                                            {regulation.startYear
-                                                                ? ` (${regulation.startYear})`
-                                                                : ""
-                                                            }
-
-                                                        </option>
-
-                                                    )
-                                                )}
-
-                                            </select>
-
-                                        </div>
-
-
-                                        {/* DEPARTMENT */}
-
-                                        <div className="col-12 col-md-6">
-
-                                            <label className="form-label fw-semibold">
-
-                                                Department
-
-                                                <span className="text-danger">
-                                                    {" "}*
-                                                </span>
-
-                                            </label>
-
-                                            <select
-                                                className="form-select form-select-lg"
-                                                value={
-                                                    departmentCode
-                                                }
-                                                onChange={(event) =>
-                                                    setDepartmentCode(
-                                                        event.target.value
-                                                    )
-                                                }
-                                            >
-
-                                                <option value="">
-                                                    Select Department
-                                                </option>
-
-                                                {departments.map(
-                                                    (department) => (
-
-                                                        <option
-                                                            key={
-                                                                department.code
-                                                            }
-                                                            value={
-                                                                department.code
-                                                            }
-                                                        >
-
-                                                            {
-                                                                department.name
-                                                            }
-
-                                                            {" ("}
-
-                                                            {
-                                                                department.code
-                                                            }
-
-                                                            {")"}
-
-                                                        </option>
-
-                                                    )
-                                                )}
-
-                                            </select>
-
-                                        </div>
-
-                                    </div>
-
-
-                                    {/* =============================================
-                                        SELECTION SUMMARY
-                                    ============================================= */}
-
-                                    {(selectedRegulation ||
-                                        selectedDepartment) && (
-
-                                        <div className="alert alert-light border mt-4">
-
-                                            <div className="d-flex align-items-start">
-
-                                                <i className="bi bi-info-circle text-primary me-2 mt-1"></i>
-
-                                                <div>
-
-                                                    <div className="fw-semibold mb-1">
-                                                        Upload Target
-                                                    </div>
-
-                                                    <small className="text-muted">
-
-                                                        {selectedRegulation
-                                                            ? `Regulation: ${selectedRegulation.code}`
-                                                            : "Regulation not selected"
-                                                        }
-
-                                                        {" • "}
-
-                                                        {selectedDepartment
-                                                            ? `Department: ${selectedDepartment.code}`
-                                                            : "Department not selected"
-                                                        }
-
-                                                    </small>
-
-                                                </div>
-
-                                            </div>
-
-                                        </div>
-
-                                    )}
-
-
-                                    {/* =============================================
-                                        FILE UPLOAD
-                                    ============================================= */}
-
-                                    <div className="mt-4">
-
-                                        <label className="form-label fw-semibold">
-
-                                            Course Structure Excel
-
-                                            <span className="text-danger">
-                                                {" "}*
+                            {/* TARGET SUMMARY BANNER */}
+                            {selectedProgram && (
+                                <div className="alert alert-light border mt-4">
+                                    <div className="d-flex align-items-center justify-content-between">
+                                        <div>
+                                            <span className="badge bg-primary me-2">{selectedProgram.level}</span>
+                                            <strong>{selectedProgram.name}</strong>
+                                            <span className="text-muted ms-2">
+                                                Duration: <strong>{selectedProgram.totalSemesters} Semesters</strong>
                                             </span>
-
-                                        </label>
-
-
-                                        <label
-                                            htmlFor="courseStructureFile"
-                                            className="d-block border rounded-4 p-5 text-center"
-                                            style={{
-                                                cursor: "pointer",
-                                                borderStyle: "dashed",
-                                                backgroundColor: "#f8f9fa"
-                                            }}
-                                        >
-
-                                            <i
-                                                className="bi bi-cloud-arrow-up text-primary"
-                                                style={{
-                                                    fontSize: "50px"
-                                                }}
-                                            ></i>
-
-
-                                            {file ? (
-
-                                                <>
-
-                                                    <h6 className="fw-semibold mt-3 mb-1">
-
-                                                        {file.name}
-
-                                                    </h6>
-
-                                                    <small className="text-success">
-
-                                                        <i className="bi bi-check-circle me-1"></i>
-
-                                                        File selected
-
-                                                    </small>
-
-                                                </>
-
-                                            ) : (
-
-                                                <>
-
-                                                    <h6 className="fw-semibold mt-3 mb-1">
-                                                        Select Excel File
-                                                    </h6>
-
-                                                    <p className="text-muted small mb-0">
-                                                        .xlsx or .xls
-                                                    </p>
-
-                                                </>
-
-                                            )}
-
-                                            <input
-                                                id="courseStructureFile"
-                                                type="file"
-                                                className="d-none"
-                                                accept=".xlsx,.xls"
-                                                onChange={
-                                                    handleFileChange
-                                                }
-                                            />
-
-                                        </label>
-
+                                        </div>
+                                        <small className="text-muted">
+                                            {selectedRegulation?.code} | {departmentCode}
+                                        </small>
                                     </div>
-
-
-                                    {/* =============================================
-                                        UPLOAD BUTTON
-                                    ============================================= */}
-
-                                    <div className="d-flex justify-content-end mt-4">
-
-                                        <button
-                                            type="submit"
-                                            className="btn btn-primary btn-lg px-4"
-                                            disabled={
-                                                uploading
-                                            }
-                                        >
-
-                                            {uploading ? (
-
-                                                <>
-
-                                                    <span
-                                                        className="spinner-border spinner-border-sm me-2"
-                                                    ></span>
-
-                                                    Uploading...
-
-                                                </>
-
-                                            ) : (
-
-                                                <>
-
-                                                    <i className="bi bi-cloud-arrow-up me-2"></i>
-
-                                                    Upload Course Structure
-
-                                                </>
-
-                                            )}
-
-                                        </button>
-
-                                    </div>
-
-                                </form>
-
+                                </div>
                             )}
 
-                        </div>
+                            {/* FILE UPLOAD */}
+                            <div className="mt-4">
+                                <label className="form-label fw-semibold">
+                                    Course Structure Excel File <span className="text-danger">*</span>
+                                </label>
+                                <input
+                                    id="courseStructureFile"
+                                    type="file"
+                                    className="form-control form-control-lg"
+                                    accept=".xlsx,.xls"
+                                    onChange={handleFileChange}
+                                    required
+                                />
+                            </div>
 
-                    </div>
-
-
-                    {/* =================================================
-                        INFORMATION CARD
-                    ================================================= */}
-
-                    <div className="card border-0 shadow-sm mt-4">
-
-                        <div className="card-body p-4">
-
-                            <h6 className="fw-bold mb-3">
-
-                                <i className="bi bi-info-circle text-primary me-2"></i>
-
-                                Upload Guidelines
-
-                            </h6>
-
-                            <ul className="text-muted small mb-0">
-
-                                <li className="mb-2">
-                                    Select the correct regulation
-                                    before uploading.
-                                </li>
-
-                                <li className="mb-2">
-                                    Select the department that
-                                    owns the course structure.
-                                </li>
-
-                                <li className="mb-2">
-                                    Upload the Excel file containing
-                                    the course structure.
-                                </li>
-
-                                <li>
-                                    Existing courses will be
-                                    updated according to the
-                                    backend course structure logic.
-                                </li>
-
-                            </ul>
-
-                        </div>
-
-                    </div>
-
+                            <div className="d-flex justify-content-end mt-4">
+                                <button
+                                    type="submit"
+                                    className="btn btn-primary btn-lg px-4"
+                                    disabled={uploading || !selectedProgram}
+                                >
+                                    {uploading ? (
+                                        <>
+                                            <span className="spinner-border spinner-border-sm me-2"></span>
+                                            Uploading...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <i className="bi bi-cloud-arrow-up me-2"></i>
+                                            Upload Course Structure
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </form>
+                    )}
                 </div>
-
             </div>
-
         </AdminLayout>
     );
 }
