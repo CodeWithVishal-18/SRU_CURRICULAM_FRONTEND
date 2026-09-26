@@ -103,6 +103,12 @@ function Curriculum() {
         return list;
     }, [maxSemesters]);
 
+    const programHeader = useMemo(() => {
+        if (!regulationCode && !departmentCode) return "";
+        const progName = selectedProgram?.name ? `(${selectedProgram.name})` : "";
+        return `${regulationCode} - ${departmentCode} ${progName}`.trim();
+    }, [regulationCode, departmentCode, selectedProgram]);
+
     const clearCurriculum = () => {
         setCurricula([]);
         setSubjects({});
@@ -388,12 +394,7 @@ function Curriculum() {
         return s;
     };
 
-    const programHeader = useMemo(() => {
-        if (!regulationCode && !departmentCode) return "";
-        const progName = selectedProgram?.name ? `(${selectedProgram.name})` : "";
-        return `${regulationCode} - ${departmentCode} ${progName}`.trim();
-    }, [regulationCode, departmentCode, selectedProgram]);
-
+    // Compact Action Buttons
     const renderActionButtons = (item, type) => {
         const status = getSyllabusStatus(item);
         const isUploaded = status === "UPLOADED" || status === "APPROVED" || status === "DRAFT";
@@ -401,20 +402,22 @@ function Curriculum() {
 
         return (
             <div className="d-flex justify-content-center align-items-center gap-1 text-nowrap">
-                {/* Upload / Edit Button */}
+                {/* Upload Button */}
                 <button
                     type="button"
-                    className="btn btn-sm btn-primary py-1 px-2"
+                    className="btn btn-sm btn-primary py-0 px-1.5"
+                    style={{ fontSize: "0.78rem", minWidth: "56px" }}
                     onClick={() => setTextModal({ open: true, item, type, readOnly: false })}
                 >
                     <i className="bi bi-pencil-square me-1"></i>
                     {isUploaded ? "Edit" : "Upload"}
                 </button>
 
-                {/* View Button - Disabled if not uploaded */}
+                {/* View Button */}
                 <button
                     type="button"
-                    className="btn btn-sm btn-outline-primary py-1 px-2"
+                    className="btn btn-sm btn-outline-primary py-0 px-1.5"
+                    style={{ fontSize: "0.78rem", minWidth: "50px" }}
                     onClick={() => setTextModal({ open: true, item, type, readOnly: true })}
                     disabled={!hasViewableContent}
                     title={hasViewableContent ? "View Syllabus" : "Syllabus not uploaded"}
@@ -426,7 +429,8 @@ function Curriculum() {
                 {/* Logs Button */}
                 <button
                     type="button"
-                    className="btn btn-sm btn-outline-dark py-1 px-2"
+                    className="btn btn-sm btn-outline-dark py-0 px-1.5"
+                    style={{ fontSize: "0.78rem", minWidth: "50px" }}
                     onClick={() => setLogModal({
                         open: true,
                         syllabusId: item.syllabusId,
@@ -435,7 +439,8 @@ function Curriculum() {
                     disabled={!item.syllabusId}
                     title={item.syllabusId ? "View Audit & Revision Logs" : "No logs available"}
                 >
-                    <i className="bi bi-clock-history me-1"></i> Logs
+                    <i className="bi bi-clock-history me-1"></i>
+                    Logs
                 </button>
             </div>
         );
@@ -454,20 +459,20 @@ function Curriculum() {
 
     return (
         <AdminLayout>
-            <div className="mb-4">
-                <h2 className="fw-bold mb-1">Curriculum Management</h2>
-                <p className="text-muted mb-0">
-                    Inspect curriculum structure and view or upload text-based syllabus content.
+            <div className="mb-3">
+                <h3 className="fw-bold mb-1">Curriculum Management</h3>
+                <p className="text-muted small mb-0">
+                    Inspect curriculum structure and view, edit, or track text-based syllabus records.
                 </p>
             </div>
 
             {/* FILTER CARD */}
             <div className="card border-0 shadow-sm mb-4">
-                <div className="card-body p-4">
-                    <div className="row g-3 align-items-end">
+                <div className="card-body p-3">
+                    <div className="row g-2 align-items-end">
                         <div className="col-12 col-md-3">
-                            <label className="form-label fw-semibold">Regulation *</label>
-                            <select className="form-select" value={regulationCode} onChange={handleRegulationChange}>
+                            <label className="form-label fw-semibold small mb-1">Regulation *</label>
+                            <select className="form-select form-select-sm" value={regulationCode} onChange={handleRegulationChange}>
                                 <option value="">Select Regulation</option>
                                 {regulations.map((reg) => (
                                     <option key={reg.code} value={reg.code}>
@@ -477,8 +482,8 @@ function Curriculum() {
                             </select>
                         </div>
                         <div className="col-12 col-md-3">
-                            <label className="form-label fw-semibold">Department *</label>
-                            <select className="form-select" value={departmentCode} onChange={handleDepartmentChange}>
+                            <label className="form-label fw-semibold small mb-1">Department *</label>
+                            <select className="form-select form-select-sm" value={departmentCode} onChange={handleDepartmentChange}>
                                 <option value="">Select Department</option>
                                 {departments.map((dept) => (
                                     <option key={dept.code} value={dept.code}>
@@ -488,9 +493,9 @@ function Curriculum() {
                             </select>
                         </div>
                         <div className="col-12 col-md-3">
-                            <label className="form-label fw-semibold">Degree Programme *</label>
+                            <label className="form-label fw-semibold small mb-1">Degree Programme *</label>
                             <select
-                                className="form-select"
+                                className="form-select form-select-sm"
                                 value={programCode}
                                 onChange={handleProgramChange}
                                 disabled={!departmentCode || !regulationCode}
@@ -499,8 +504,8 @@ function Curriculum() {
                                     {!departmentCode || !regulationCode
                                         ? "Select Regulation & Dept First"
                                         : availablePrograms.length === 0
-                                            ? "No matching programmes"
-                                            : "Select Degree Programme"}
+                                        ? "No matching programmes"
+                                        : "Select Degree Programme"}
                                 </option>
                                 {availablePrograms.map((prog) => (
                                     <option key={prog.code} value={prog.code}>
@@ -510,8 +515,8 @@ function Curriculum() {
                             </select>
                         </div>
                         <div className="col-12 col-md-2">
-                            <label className="form-label fw-semibold">Semester *</label>
-                            <select className="form-select" value={semester} onChange={handleSemesterChange} disabled={!programCode}>
+                            <label className="form-label fw-semibold small mb-1">Semester *</label>
+                            <select className="form-select form-select-sm" value={semester} onChange={handleSemesterChange} disabled={!programCode}>
                                 <option value="">Select Semester</option>
                                 {semesterOptions.map((item) => (
                                     <option key={item.value} value={item.value}>
@@ -523,7 +528,7 @@ function Curriculum() {
                         <div className="col-12 col-md-1">
                             <button
                                 type="button"
-                                className="btn btn-primary w-100"
+                                className="btn btn-sm btn-primary w-100"
                                 onClick={handleLoadCurriculum}
                                 disabled={curriculumLoading || !programCode || !semester}
                             >
@@ -553,44 +558,44 @@ function Curriculum() {
                         const track2Credits = track2Items.reduce((s, x) => s + getCredit(x.data), 0);
 
                         return (
-                            <div key={curriculum.semester} className="card border-0 shadow-sm mb-5">
-                                <div className="card-header bg-primary text-white py-2">
+                            <div key={curriculum.semester} className="card border-0 shadow-sm mb-4">
+                                <div className="card-header bg-primary text-white py-2 px-3">
                                     <div className="d-flex justify-content-between align-items-center">
-                                        <h5 className="fw-bold mb-0">{getSemesterTitle(curriculum.semester)}</h5>
-                                        <small className="opacity-75">{regulationCode} - {departmentCode} ({selectedProgram?.name || programCode})</small>
+                                        <h6 className="fw-bold mb-0">{getSemesterTitle(curriculum.semester)}</h6>
+                                        <small className="opacity-75">{programHeader}</small>
                                     </div>
                                 </div>
 
-                                <div className="table-responsive">
+                                <div className="table-responsive" style={{ overflowX: "hidden" }}>
                                     <table
-                                        className="table table-bordered align-middle mb-0 text-center"
-                                        style={{ tableLayout: "fixed", width: "100%" }}
+                                        className="table table-sm table-bordered align-middle mb-0 text-center"
+                                        style={{ width: "100%", fontSize: "0.85rem", tableLayout: "auto" }}
                                     >
                                         <colgroup>
-                                            <col style={{ width: "60px" }} />
-                                            <col style={{ width: "160px" }} />
+                                            <col style={{ width: "45px" }} />
+                                            <col style={{ width: "130px" }} />
                                             <col />
-                                            <col style={{ width: "55px" }} />
-                                            <col style={{ width: "55px" }} />
-                                            <col style={{ width: "55px" }} />
-                                            <col style={{ width: "60px" }} />
-                                            <col style={{ width: "140px" }} />
-                                            <col style={{ width: "210px" }} />
+                                            <col style={{ width: "38px" }} />
+                                            <col style={{ width: "38px" }} />
+                                            <col style={{ width: "38px" }} />
+                                            <col style={{ width: "42px" }} />
+                                            <col style={{ width: "110px" }} />
+                                            <col style={{ width: "175px" }} />
                                         </colgroup>
                                         <thead className="table-primary text-dark fw-semibold">
                                             <tr>
-                                                <th rowSpan="2">S.No.</th>
-                                                <th rowSpan="2">Course Code</th>
-                                                <th rowSpan="2" className="text-start ps-3">Course</th>
-                                                <th colSpan="4">Hours / Week</th>
-                                                <th rowSpan="2">Status</th>
-                                                <th rowSpan="2">Action</th>
+                                                <th rowSpan="2" className="py-1">S.No.</th>
+                                                <th rowSpan="2" className="py-1">Course Code</th>
+                                                <th rowSpan="2" className="text-start ps-2 py-1">Course</th>
+                                                <th colSpan="4" className="py-0.5">Hours / Week</th>
+                                                <th rowSpan="2" className="py-1">Status</th>
+                                                <th rowSpan="2" className="py-1">Action</th>
                                             </tr>
                                             <tr>
-                                                <th>L</th>
-                                                <th>R</th>
-                                                <th>P</th>
-                                                <th>C</th>
+                                                <th className="py-0.5">L</th>
+                                                <th className="py-0.5">R</th>
+                                                <th className="py-0.5">P</th>
+                                                <th className="py-0.5">C</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -601,24 +606,27 @@ function Curriculum() {
                                                 if (entry.type === "course") {
                                                     const course = entry.data;
                                                     return (
-                                                        <tr key={`t1-course-${course.id}`} style={{ height: "54px" }}>
-                                                            <td>{serial}</td>
-                                                            <td className="fw-semibold text-truncate" title={course.courseCode}>
+                                                        <tr key={`t1-course-${course.id}`} style={{ height: "42px" }}>
+                                                            <td className="py-1">{serial}</td>
+                                                            <td className="fw-semibold text-truncate py-1" title={course.courseCode}>
                                                                 {course.courseCode || "-"}
                                                             </td>
-                                                            <td className="text-start ps-3 fw-semibold text-truncate" title={course.courseName}>
+                                                            <td className="text-start ps-2 fw-semibold text-truncate py-1" title={course.courseName}>
                                                                 {course.courseName}
                                                             </td>
-                                                            <td>{formatNumber(course.lecture)}</td>
-                                                            <td>{formatNumber(course.tutorial)}</td>
-                                                            <td>{formatNumber(course.practical)}</td>
-                                                            <td className="fw-semibold">{formatNumber(getCredit(course))}</td>
-                                                            <td>
-                                                                <span className={`badge ${getStatusBadgeClass(getSyllabusStatus(course))}`}>
+                                                            <td className="py-1">{formatNumber(course.lecture)}</td>
+                                                            <td className="py-1">{formatNumber(course.tutorial)}</td>
+                                                            <td className="py-1">{formatNumber(course.practical)}</td>
+                                                            <td className="fw-semibold py-1">{formatNumber(getCredit(course))}</td>
+                                                            <td className="py-1">
+                                                                <span
+                                                                    className={`badge ${getStatusBadgeClass(getSyllabusStatus(course))}`}
+                                                                    style={{ fontSize: "0.75rem", padding: "3px 6px" }}
+                                                                >
                                                                     {getStatusLabel(getSyllabusStatus(course))}
                                                                 </span>
                                                             </td>
-                                                            <td>{renderActionButtons(course, "course")}</td>
+                                                            <td className="py-1">{renderActionButtons(course, "course")}</td>
                                                         </tr>
                                                     );
                                                 }
@@ -629,35 +637,36 @@ function Curriculum() {
 
                                                 return (
                                                     <React.Fragment key={`t1-group-${group.id}`}>
-                                                        <tr style={{ height: "54px" }}>
-                                                            <td>{serial}</td>
-                                                            <td>-</td>
-                                                            <td className="text-start ps-3">
+                                                        <tr style={{ height: "42px" }}>
+                                                            <td className="py-1">{serial}</td>
+                                                            <td className="py-1">-</td>
+                                                            <td className="text-start ps-2 py-1">
                                                                 <div
                                                                     className="d-flex align-items-center justify-content-between text-primary fw-semibold"
                                                                     style={{ cursor: "pointer" }}
                                                                     onClick={() => handleToggleElectiveGroup(group)}
                                                                 >
                                                                     <span className="text-truncate" title={group.name}>{group.name}</span>
-                                                                    <span className="badge bg-primary-subtle text-primary small ms-2 text-nowrap">
+                                                                    <span className="badge bg-primary-subtle text-primary small ms-1 text-nowrap" style={{ fontSize: "0.72rem" }}>
                                                                         <i className={`bi bi-chevron-${isExpanded ? "up" : "down"} me-1`}></i>
                                                                         {isExpanded ? "Hide" : "View"}
                                                                     </span>
                                                                 </div>
                                                             </td>
-                                                            <td>{formatNumber(group.lecture)}</td>
-                                                            <td>{formatNumber(group.tutorial)}</td>
-                                                            <td>{formatNumber(group.practical)}</td>
-                                                            <td className="fw-semibold">{formatNumber(getCredit(group))}</td>
-                                                            <td>
-                                                                <span className="badge bg-secondary-subtle text-secondary text-nowrap">
+                                                            <td className="py-1">{formatNumber(group.lecture)}</td>
+                                                            <td className="py-1">{formatNumber(group.tutorial)}</td>
+                                                            <td className="py-1">{formatNumber(group.practical)}</td>
+                                                            <td className="fw-semibold py-1">{formatNumber(getCredit(group))}</td>
+                                                            <td className="py-1">
+                                                                <span className="badge bg-secondary-subtle text-secondary text-nowrap" style={{ fontSize: "0.75rem", padding: "3px 6px" }}>
                                                                     Elective Slot
                                                                 </span>
                                                             </td>
-                                                            <td>
+                                                            <td className="py-1">
                                                                 <button
                                                                     type="button"
-                                                                    className="btn btn-sm btn-outline-secondary py-1 px-2 text-nowrap"
+                                                                    className="btn btn-sm btn-outline-secondary py-0 px-2 text-nowrap"
+                                                                    style={{ fontSize: "0.78rem" }}
                                                                     onClick={() => handleToggleElectiveGroup(group)}
                                                                 >
                                                                     {isExpanded ? "Collapse" : "Subjects"}
@@ -668,11 +677,11 @@ function Curriculum() {
                                                         {/* EXPANDED SUBJECTS */}
                                                         {isExpanded && (
                                                             <tr className="bg-light">
-                                                                <td colSpan="9" className="p-3">
-                                                                    <div className="border rounded bg-white p-3 shadow-sm text-start">
-                                                                        <div className="d-flex justify-content-between align-items-center mb-3">
-                                                                            <h6 className="fw-bold mb-0 text-primary">
-                                                                                <i className="bi bi-list-ul me-2"></i>
+                                                                <td colSpan="9" className="p-2">
+                                                                    <div className="border rounded bg-white p-2 shadow-sm text-start">
+                                                                        <div className="d-flex justify-content-between align-items-center mb-2">
+                                                                            <h6 className="fw-bold mb-0 text-primary small">
+                                                                                <i className="bi bi-list-ul me-1"></i>
                                                                                 Subjects in {group.name}
                                                                             </h6>
                                                                             {subjectsLoading[group.id] && (
@@ -682,67 +691,68 @@ function Curriculum() {
                                                                         {subjectsLoading[group.id] ? (
                                                                             <div className="text-muted small">Loading subjects...</div>
                                                                         ) : groupSubjects.length === 0 ? (
-                                                                            <div className="alert alert-warning mb-0 small">No subjects available in this group.</div>
+                                                                            <div className="alert alert-warning mb-0 small py-1">No subjects available in this group.</div>
                                                                         ) : (
-                                                                            <div className="table-responsive">
-                                                                                <table
-                                                                                    className="table table-sm table-bordered align-middle mb-0 text-center"
-                                                                                    style={{ tableLayout: "fixed", width: "100%" }}
-                                                                                >
-                                                                                    <colgroup>
-                                                                                        <col style={{ width: "60px" }} />
-                                                                                        <col style={{ width: "160px" }} />
-                                                                                        <col />
-                                                                                        <col style={{ width: "55px" }} />
-                                                                                        <col style={{ width: "55px" }} />
-                                                                                        <col style={{ width: "55px" }} />
-                                                                                        <col style={{ width: "60px" }} />
-                                                                                        <col style={{ width: "140px" }} />
-                                                                                        <col style={{ width: "210px" }} />
-                                                                                    </colgroup>
-                                                                                    <thead className="table-secondary">
-                                                                                        <tr>
-                                                                                            <th>#</th>
-                                                                                            <th>Subject Code</th>
-                                                                                            <th className="text-start ps-2">Subject Name</th>
-                                                                                            <th>L</th>
-                                                                                            <th>R</th>
-                                                                                            <th>P</th>
-                                                                                            <th>C</th>
-                                                                                            <th>Status</th>
-                                                                                            <th>Action</th>
-                                                                                        </tr>
-                                                                                    </thead>
-                                                                                    <tbody>
-                                                                                        {groupSubjects.map((sub, sIdx) => (
-                                                                                            <tr key={`group-${group.id}-sub-${sub.id}`} style={{ height: "48px" }}>
-                                                                                                <td>{sIdx + 1}</td>
-                                                                                                <td className="fw-semibold text-truncate" title={sub.courseCode}>
-                                                                                                    {sub.courseCode || "-"}
-                                                                                                </td>
-                                                                                                <td className="text-start ps-2 text-truncate" title={sub.courseName}>
-                                                                                                    <span>{sub.courseName}</span>
-                                                                                                    {sub.offeringDepartment && (
-                                                                                                        <span className="badge bg-info-subtle text-info-emphasis border border-info-subtle ms-2 py-0 px-1 small">
-                                                                                                            {sub.offeringDepartment}
-                                                                                                        </span>
-                                                                                                    )}
-                                                                                                </td>
-                                                                                                <td>{formatNumber(sub.lecture)}</td>
-                                                                                                <td>{formatNumber(sub.tutorial)}</td>
-                                                                                                <td>{formatNumber(sub.practical)}</td>
-                                                                                                <td className="fw-semibold">{formatNumber(getCredit(sub))}</td>
-                                                                                                <td>
-                                                                                                    <span className={`badge ${getStatusBadgeClass(getSyllabusStatus(sub))}`}>
-                                                                                                        {getStatusLabel(getSyllabusStatus(sub))}
+                                                                            <table
+                                                                                className="table table-sm table-bordered align-middle mb-0 text-center"
+                                                                                style={{ width: "100%", fontSize: "0.82rem" }}
+                                                                            >
+                                                                                <colgroup>
+                                                                                    <col style={{ width: "45px" }} />
+                                                                                    <col style={{ width: "130px" }} />
+                                                                                    <col />
+                                                                                    <col style={{ width: "38px" }} />
+                                                                                    <col style={{ width: "38px" }} />
+                                                                                    <col style={{ width: "38px" }} />
+                                                                                    <col style={{ width: "42px" }} />
+                                                                                    <col style={{ width: "110px" }} />
+                                                                                    <col style={{ width: "175px" }} />
+                                                                                </colgroup>
+                                                                                <thead className="table-secondary">
+                                                                                    <tr>
+                                                                                        <th className="py-0.5">#</th>
+                                                                                        <th className="py-0.5">Subject Code</th>
+                                                                                        <th className="text-start ps-2 py-0.5">Subject Name</th>
+                                                                                        <th className="py-0.5">L</th>
+                                                                                        <th className="py-0.5">R</th>
+                                                                                        <th className="py-0.5">P</th>
+                                                                                        <th className="py-0.5">C</th>
+                                                                                        <th className="py-0.5">Status</th>
+                                                                                        <th className="py-0.5">Action</th>
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody>
+                                                                                    {groupSubjects.map((sub, sIdx) => (
+                                                                                        <tr key={`group-${group.id}-sub-${sub.id}`}>
+                                                                                            <td className="py-1">{sIdx + 1}</td>
+                                                                                            <td className="fw-semibold text-truncate py-1" title={sub.courseCode}>
+                                                                                                {sub.courseCode || "-"}
+                                                                                            </td>
+                                                                                            <td className="text-start ps-2 text-truncate py-1" title={sub.courseName}>
+                                                                                                <span>{sub.courseName}</span>
+                                                                                                {sub.offeringDepartment && (
+                                                                                                    <span className="badge bg-info-subtle text-info-emphasis border border-info-subtle ms-1 py-0 px-1" style={{ fontSize: "0.7rem" }}>
+                                                                                                        {sub.offeringDepartment}
                                                                                                     </span>
-                                                                                                </td>
-                                                                                                <td>{renderActionButtons(sub, "elective")}</td>
-                                                                                            </tr>
-                                                                                        ))}
-                                                                                    </tbody>
-                                                                                </table>
-                                                                            </div>
+                                                                                                )}
+                                                                                            </td>
+                                                                                            <td className="py-1">{formatNumber(sub.lecture)}</td>
+                                                                                            <td className="py-1">{formatNumber(sub.tutorial)}</td>
+                                                                                            <td className="py-1">{formatNumber(sub.practical)}</td>
+                                                                                            <td className="fw-semibold py-1">{formatNumber(getCredit(sub))}</td>
+                                                                                            <td className="py-1">
+                                                                                                <span
+                                                                                                    className={`badge ${getStatusBadgeClass(getSyllabusStatus(sub))}`}
+                                                                                                    style={{ fontSize: "0.72rem", padding: "2px 5px" }}
+                                                                                                >
+                                                                                                    {getStatusLabel(getSyllabusStatus(sub))}
+                                                                                                </span>
+                                                                                            </td>
+                                                                                            <td className="py-1">{renderActionButtons(sub, "elective")}</td>
+                                                                                        </tr>
+                                                                                    ))}
+                                                                                </tbody>
+                                                                            </table>
                                                                         )}
                                                                     </div>
                                                                 </td>
@@ -753,21 +763,21 @@ function Curriculum() {
                                             })}
 
                                             {/* TRACK 1 TOTAL */}
-                                            <tr className="table-light fw-bold" style={{ height: "48px" }}>
-                                                <td colSpan="3" className="text-end pe-3">Total</td>
-                                                <td>{formatNumber(track1Lecture)}</td>
-                                                <td>{formatNumber(track1Tutorial)}</td>
-                                                <td>{formatNumber(track1Practical)}</td>
-                                                <td className="fw-bold">{formatNumber(track1Credits)}</td>
-                                                <td></td>
-                                                <td></td>
+                                            <tr className="table-light fw-bold">
+                                                <td colSpan="3" className="text-end pe-2 py-1">Total</td>
+                                                <td className="py-1">{formatNumber(track1Lecture)}</td>
+                                                <td className="py-1">{formatNumber(track1Tutorial)}</td>
+                                                <td className="py-1">{formatNumber(track1Practical)}</td>
+                                                <td className="fw-bold py-1">{formatNumber(track1Credits)}</td>
+                                                <td className="py-1"></td>
+                                                <td className="py-1"></td>
                                             </tr>
 
                                             {/* TRACK 2 (AFTER OR) */}
                                             {hasAltTrack && (
                                                 <>
-                                                    <tr className="table-secondary text-center fw-bold" style={{ height: "40px" }}>
-                                                        <td colSpan="9" className="py-2 fs-6 text-uppercase">
+                                                    <tr className="table-secondary text-center fw-bold">
+                                                        <td colSpan="9" className="py-1 fs-6 text-uppercase">
                                                             Or
                                                         </td>
                                                     </tr>
@@ -775,36 +785,39 @@ function Curriculum() {
                                                     {track2Items.map((entry, idx) => {
                                                         const course = entry.data;
                                                         return (
-                                                            <tr key={`t2-course-${course.id}`} style={{ height: "54px" }}>
-                                                                <td>{idx + 1}</td>
-                                                                <td className="fw-semibold text-truncate" title={course.courseCode}>
+                                                            <tr key={`t2-course-${course.id}`} style={{ height: "42px" }}>
+                                                                <td className="py-1">{idx + 1}</td>
+                                                                <td className="fw-semibold text-truncate py-1" title={course.courseCode}>
                                                                     {course.courseCode}
                                                                 </td>
-                                                                <td className="text-start ps-3 fw-semibold text-truncate" title={course.courseName}>
+                                                                <td className="text-start ps-2 fw-semibold text-truncate py-1" title={course.courseName}>
                                                                     {course.courseName}
                                                                 </td>
-                                                                <td>{formatNumber(course.lecture)}</td>
-                                                                <td>{formatNumber(course.tutorial)}</td>
-                                                                <td>{formatNumber(course.practical)}</td>
-                                                                <td className="fw-semibold">{formatNumber(getCredit(course))}</td>
-                                                                <td>
-                                                                    <span className={`badge ${getStatusBadgeClass(getSyllabusStatus(course))}`}>
+                                                                <td className="py-1">{formatNumber(course.lecture)}</td>
+                                                                <td className="py-1">{formatNumber(course.tutorial)}</td>
+                                                                <td className="py-1">{formatNumber(course.practical)}</td>
+                                                                <td className="fw-semibold py-1">{formatNumber(getCredit(course))}</td>
+                                                                <td className="py-1">
+                                                                    <span
+                                                                        className={`badge ${getStatusBadgeClass(getSyllabusStatus(course))}`}
+                                                                        style={{ fontSize: "0.75rem", padding: "3px 6px" }}
+                                                                    >
                                                                         {getStatusLabel(getSyllabusStatus(course))}
                                                                     </span>
                                                                 </td>
-                                                                <td>{renderActionButtons(course, "course")}</td>
+                                                                <td className="py-1">{renderActionButtons(course, "course")}</td>
                                                             </tr>
                                                         );
                                                     })}
 
-                                                    <tr className="table-light fw-bold" style={{ height: "48px" }}>
-                                                        <td colSpan="3" className="text-end pe-3">Total</td>
-                                                        <td>{formatNumber(track2Lecture)}</td>
-                                                        <td>{formatNumber(track2Tutorial)}</td>
-                                                        <td>{formatNumber(track2Practical)}</td>
-                                                        <td className="fw-bold">{formatNumber(track2Credits)}</td>
-                                                        <td></td>
-                                                        <td></td>
+                                                    <tr className="table-light fw-bold">
+                                                        <td colSpan="3" className="text-end pe-2 py-1">Total</td>
+                                                        <td className="py-1">{formatNumber(track2Lecture)}</td>
+                                                        <td className="py-1">{formatNumber(track2Tutorial)}</td>
+                                                        <td className="py-1">{formatNumber(track2Practical)}</td>
+                                                        <td className="fw-bold py-1">{formatNumber(track2Credits)}</td>
+                                                        <td className="py-1"></td>
+                                                        <td className="py-1"></td>
                                                     </tr>
                                                 </>
                                             )}
@@ -817,7 +830,7 @@ function Curriculum() {
                 </div>
             )}
 
-            
+            {/* TEXT SYLLABUS MODAL */}
             {textModal.open && (
                 <TextSyllabusModal
                     item={textModal.item}
@@ -830,7 +843,7 @@ function Curriculum() {
                 />
             )}
 
-            
+            {/* SYLLABUS AUDIT LOG MODAL */}
             {logModal.open && (
                 <SyllabusAuditLogModal
                     syllabusId={logModal.syllabusId}
