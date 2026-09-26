@@ -383,6 +383,12 @@ function FacultyCurriculum() {
         return s;
     };
 
+    const programHeader = useMemo(() => {
+        if (!regulationCode && !departmentCode) return "";
+        const progName = selectedProgram?.name ? `(${selectedProgram.name})` : "";
+        return `${regulationCode} - ${departmentCode} ${progName}`.trim();
+    }, [regulationCode, departmentCode, selectedProgram]);
+
     const renderSyllabusActions = (item, type) => {
         const status = getSyllabusStatus(item);
         const isRejected = status === "REJECTED";
@@ -478,8 +484,8 @@ function FacultyCurriculum() {
                                     {!departmentCode || !regulationCode
                                         ? "Select Regulation & Dept First"
                                         : availablePrograms.length === 0
-                                        ? "No matching programmes"
-                                        : "Select Degree Programme"}
+                                            ? "No matching programmes"
+                                            : "Select Degree Programme"}
                                 </option>
                                 {availablePrograms.map((prog) => (
                                     <option key={prog.code} value={prog.code}>
@@ -734,7 +740,8 @@ function FacultyCurriculum() {
                     item={textModal.item}
                     type={textModal.type}
                     readOnly={textModal.readOnly}
-                    isAdmin={false}
+                    isAdmin={true} 
+                    programHeader={programHeader}
                     onClose={() => setTextModal({ open: false, item: null, type: "course", readOnly: false })}
                     onSuccess={() => handleLoadCurriculum()}
                 />

@@ -388,6 +388,12 @@ function Curriculum() {
         return s;
     };
 
+    const programHeader = useMemo(() => {
+        if (!regulationCode && !departmentCode) return "";
+        const progName = selectedProgram?.name ? `(${selectedProgram.name})` : "";
+        return `${regulationCode} - ${departmentCode} ${progName}`.trim();
+    }, [regulationCode, departmentCode, selectedProgram]);
+
     const renderActionButtons = (item, type) => {
         const status = getSyllabusStatus(item);
         const isUploaded = status === "UPLOADED" || status === "APPROVED" || status === "DRAFT";
@@ -493,8 +499,8 @@ function Curriculum() {
                                     {!departmentCode || !regulationCode
                                         ? "Select Regulation & Dept First"
                                         : availablePrograms.length === 0
-                                        ? "No matching programmes"
-                                        : "Select Degree Programme"}
+                                            ? "No matching programmes"
+                                            : "Select Degree Programme"}
                                 </option>
                                 {availablePrograms.map((prog) => (
                                     <option key={prog.code} value={prog.code}>
@@ -811,19 +817,20 @@ function Curriculum() {
                 </div>
             )}
 
-            {/* TEXT SYLLABUS MODAL */}
+            
             {textModal.open && (
                 <TextSyllabusModal
                     item={textModal.item}
                     type={textModal.type}
                     readOnly={textModal.readOnly}
                     isAdmin={true}
+                    programHeader={programHeader}
                     onClose={() => setTextModal({ open: false, item: null, type: "course", readOnly: false })}
                     onSuccess={() => handleLoadCurriculum()}
                 />
             )}
 
-            {/* SYLLABUS AUDIT LOG MODAL */}
+            
             {logModal.open && (
                 <SyllabusAuditLogModal
                     syllabusId={logModal.syllabusId}
