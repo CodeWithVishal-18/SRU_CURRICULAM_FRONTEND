@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { toast } from "react-toastify";
 import api from "../services/api";
 
@@ -7,6 +7,7 @@ export default function TextSyllabusModal({
     type,
     readOnly = false,
     isAdmin = false,
+    programHeader = "", // e.g., "R25-UG - CSAI (B.Tech – Computer Science and Engineering)"
     onClose,
     onSuccess,
 }) {
@@ -111,6 +112,203 @@ export default function TextSyllabusModal({
         }
         updated[uIdx].topics.splice(tIdx, 1);
         setUnits(updated);
+    };
+
+    // =========================================================
+    // PRINT / DOWNLOAD AS PDF IN APPROVED TEMPLATE FORMAT
+    // =========================================================
+    const handleDownloadPdf = () => {
+        const printWindow = window.open("", "_blank", "width=900,height=800");
+        if (!printWindow) {
+            toast.error("Please allow popups to download the PDF");
+            return;
+        }
+
+        const validCOs = courseOutcomes.filter((co) => co.trim());
+        const validRecs = recitations.filter((r) => r.trim());
+        const validLabs = labComponents.filter((l) => l.trim());
+        const validTbs = textbooks.filter((t) => t.trim());
+        const validRbs = referenceBooks.filter((r) => r.trim());
+        const validRes = onlineResources.filter((r) => r.trim());
+
+        const htmlContent = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>${item.courseCode || "Course"}_${item.courseName || "Syllabus"}</title>
+                <style>
+                    @page {
+                        size: A4;
+                        margin: 18mm 16mm;
+                    }
+                    body {
+                        font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
+                        color: #111;
+                        line-height: 1.45;
+                        font-size: 11pt;
+                        margin: 0;
+                        padding: 0;
+                    }
+                    .header-banner {
+                        text-align: center;
+                        border-bottom: 2px solid #0d6efd;
+                        padding-bottom: 8px;
+                        margin-bottom: 16px;
+                    }
+                    .header-banner h4 {
+                        margin: 0 0 4px 0;
+                        font-size: 14pt;
+                        text-transform: uppercase;
+                        letter-spacing: 0.5px;
+                    }
+                    .header-banner h5 {
+                        margin: 0;
+                        font-size: 11pt;
+                        font-weight: 600;
+                        color: #0d6efd;
+                    }
+                    table.meta-table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-bottom: 18px;
+                    }
+                    table.meta-table th, table.meta-table td {
+                        border: 1px solid #333;
+                        padding: 6px 10px;
+                        font-size: 10.5pt;
+                    }
+                    .section-title {
+                        font-size: 11.5pt;
+                        font-weight: bold;
+                        border-bottom: 1.5px solid #222;
+                        padding-bottom: 3px;
+                        margin-top: 16px;
+                        margin-bottom: 8px;
+                        text-transform: uppercase;
+                    }
+                    ul, ol {
+                        margin-top: 4px;
+                        margin-bottom: 12px;
+                        padding-left: 22px;
+                    }
+                    li {
+                        margin-bottom: 4px;
+                    }
+                    .unit-block {
+                        margin-bottom: 10px;
+                    }
+                    .unit-title {
+                        font-weight: bold;
+                        color: #000;
+                        margin-bottom: 3px;
+                    }
+                    .unit-topics {
+                        margin: 0;
+                        padding-left: 18px;
+                        color: #222;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header-banner">
+                    <h4>SR UNIVERSITY</h4>
+                    ${programHeader ? `<h5>${programHeader}</h5>` : ""}
+                </div>
+
+                <table class="meta-table">
+                    <tbody>
+                        <tr>
+                            <td colspan="3" style="font-size: 12pt; font-weight: bold;">
+                                <div>${item.courseCode || ""}</div>
+                                <div>${item.courseName || ""}</div>
+                            </td>
+                            <td style="width: 45px; text-align: center; font-weight: bold;">L</td>
+                            <td style="width: 45px; text-align: center; font-weight: bold;">R</td>
+                            <td style="width: 45px; text-align: center; font-weight: bold;">P</td>
+                            <td style="width: 45px; text-align: center; font-weight: bold;">C</td>
+                        </tr>
+                        <tr>
+                            <td colspan="3" style="color: #444; font-size: 10pt;">Credit Structure</td>
+                            <td style="text-align: center; font-weight: bold;">${L}</td>
+                            <td style="text-align: center; font-weight: bold;">${R}</td>
+                            <td style="text-align: center; font-weight: bold;">${P}</td>
+                            <td style="text-align: center; font-weight: bold;">${C}</td>
+                        </tr>
+                        <tr>
+                            <td style="width: 140px; font-weight: bold; background: #f2f2f2;">Course type</td>
+                            <td>${courseType || "Engineering Science"}</td>
+                            <td style="width: 140px; font-weight: bold; background: #f2f2f2;">Pre-requisite</td>
+                            <td colspan="4">${prerequisite || "NA"}</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="section-title">Course Outcomes:</div>
+                <div style="font-size: 10pt; margin-bottom: 6px; font-style: italic;">
+                    At the end of the course, the student will be able to:
+                </div>
+                <ul style="list-style-type: none; padding-left: 0;">
+                    ${validCOs.map((co, idx) => `<li style="margin-bottom: 6px;"><strong>CO${idx + 1}:</strong> ${co}</li>`).join("")}
+                </ul>
+
+                ${L > 0 ? `
+                    <div class="section-title">Unit-Wise Syllabus</div>
+                    ${units.map((u) => `
+                        <div class="unit-block">
+                            <div class="unit-title">${u.title}</div>
+                            <ul class="unit-topics">
+                                ${(u.topics || []).filter(t => t.trim()).map(top => `<li>${top}</li>`).join("")}
+                            </ul>
+                        </div>
+                    `).join("")}
+                ` : ""}
+
+                ${R > 0 && validRecs.length > 0 ? `
+                    <div class="section-title">Recitation / Tutorial Topics</div>
+                    <ol>
+                        ${validRecs.map((rec) => `<li>${rec}</li>`).join("")}
+                    </ol>
+                ` : ""}
+
+                ${P > 0 && validLabs.length > 0 ? `
+                    <div class="section-title">Lab / Product Components</div>
+                    <ol>
+                        ${validLabs.map((lab) => `<li>${lab}</li>`).join("")}
+                    </ol>
+                ` : ""}
+
+                ${validTbs.length > 0 ? `
+                    <div class="section-title">Textbooks</div>
+                    <ol>
+                        ${validTbs.map((tb) => `<li>${tb}</li>`).join("")}
+                    </ol>
+                ` : ""}
+
+                ${validRbs.length > 0 ? `
+                    <div class="section-title">Reference Books</div>
+                    <ol>
+                        ${validRbs.map((rb) => `<li>${rb}</li>`).join("")}
+                    </ol>
+                ` : ""}
+
+                ${validRes.length > 0 ? `
+                    <div class="section-title">Online Resources / Useful Links</div>
+                    <ul>
+                        ${validRes.map((res) => `<li><a href="${res.startsWith("http") ? res : `https://${res}`}">${res}</a></li>`).join("")}
+                    </ul>
+                ` : ""}
+            </body>
+            </html>
+        `;
+
+        printWindow.document.open();
+        printWindow.document.write(htmlContent);
+        printWindow.document.close();
+
+        printWindow.onload = () => {
+            printWindow.focus();
+            printWindow.print();
+        };
     };
 
     const validate = () => {
@@ -227,7 +425,6 @@ export default function TextSyllabusModal({
         }
     };
 
-    // Admin Review Actions
     const handleAdminReview = async (status) => {
         if (!item.syllabusId) return;
 
@@ -256,14 +453,28 @@ export default function TextSyllabusModal({
         <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: "rgba(0,0,0,0.65)", zIndex: 1060 }}>
             <div className="modal-dialog modal-dialog-centered modal-xl">
                 <div className="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
-                    <div className="modal-header bg-primary text-white py-3 px-4">
+                    <div className="modal-header bg-primary text-white py-3 px-4 d-flex justify-content-between align-items-center">
                         <div>
                             <h5 className="modal-title fw-bold mb-0">
                                 {!isEditMode ? "View Course Syllabus" : "Upload / Edit Syllabus"}
                             </h5>
                             <small className="opacity-75">{item.courseCode || ""} - {item.courseName}</small>
                         </div>
-                        <button type="button" className="btn-close btn-close-white" onClick={onClose}></button>
+                        <div className="d-flex align-items-center gap-2">
+                            {/* DOWNLOAD PDF BUTTON */}
+                            {!isEditMode && (
+                                <button
+                                    type="button"
+                                    className="btn btn-sm btn-light fw-semibold text-primary d-flex align-items-center gap-1 shadow-sm"
+                                    onClick={handleDownloadPdf}
+                                    title="Download as PDF"
+                                >
+                                    <i className="bi bi-file-earmark-pdf-fill fs-6 text-danger"></i>
+                                    <span>Download PDF</span>
+                                </button>
+                            )}
+                            <button type="button" className="btn-close btn-close-white ms-2" onClick={onClose}></button>
+                        </div>
                     </div>
 
                     <div className="modal-body p-4" style={{ maxHeight: "75vh", overflowY: "auto" }}>
@@ -275,6 +486,13 @@ export default function TextSyllabusModal({
                         ) : !isEditMode ? (
                             /* READ ONLY VIEW MODE */
                             <div className="bg-white p-4 border rounded shadow-sm">
+                                {/* PROGRAM BANNER */}
+                                {programHeader && (
+                                    <div className="text-center border-bottom pb-2 mb-4">
+                                        <h5 className="fw-bold mb-0 text-primary">{programHeader}</h5>
+                                    </div>
+                                )}
+
                                 {/* REJECTION BANNER FOR HOD / DEAN */}
                                 {currentStatus === "REJECTED" && (
                                     <div className="alert alert-danger border-0 d-flex justify-content-between align-items-center mb-4 p-3 rounded-3">
@@ -440,7 +658,6 @@ export default function TextSyllabusModal({
                                     </div>
                                 </div>
 
-                                {/* Outcomes */}
                                 <div className="card border p-3 mb-4 rounded-3">
                                     <div className="d-flex justify-content-between align-items-center mb-2">
                                         <h6 className="fw-bold mb-0 text-primary">Course Outcomes (Min 3, Max 5)</h6>
@@ -461,7 +678,6 @@ export default function TextSyllabusModal({
                                     ))}
                                 </div>
 
-                                {/* Theory Units */}
                                 {L > 0 ? (
                                     <div className="card border p-3 mb-4 rounded-3">
                                         <div className="d-flex justify-content-between align-items-center mb-2">
@@ -507,7 +723,6 @@ export default function TextSyllabusModal({
                                     <div className="alert alert-secondary small mb-4">Theory Section: Not Applicable (L = 0)</div>
                                 )}
 
-                                {/* Recitation */}
                                 {R > 0 ? (
                                     <div className="card border p-3 mb-4 rounded-3">
                                         <div className="d-flex justify-content-between align-items-center mb-2">
@@ -535,7 +750,6 @@ export default function TextSyllabusModal({
                                     <div className="alert alert-secondary small mb-4">Recitation Section: Not Applicable (R = 0)</div>
                                 )}
 
-                                {/* Lab */}
                                 {P > 0 ? (
                                     <div className="card border p-3 mb-4 rounded-3">
                                         <div className="d-flex justify-content-between align-items-center mb-2">
@@ -563,7 +777,6 @@ export default function TextSyllabusModal({
                                     <div className="alert alert-secondary small mb-4">Laboratory Section: Not Applicable (P = 0)</div>
                                 )}
 
-                                {/* Textbooks (Max 2) */}
                                 <div className="card border p-3 mb-4 rounded-3">
                                     <div className="d-flex justify-content-between align-items-center mb-2">
                                         <h6 className="fw-bold mb-0 text-primary">Textbooks (Maximum 2)</h6>
@@ -582,7 +795,6 @@ export default function TextSyllabusModal({
                                     ))}
                                 </div>
 
-                                {/* Reference Books (Max 2) */}
                                 <div className="card border p-3 mb-4 rounded-3">
                                     <div className="d-flex justify-content-between align-items-center mb-2">
                                         <h6 className="fw-bold mb-0 text-primary">Reference Books (Maximum 2)</h6>
@@ -601,7 +813,6 @@ export default function TextSyllabusModal({
                                     ))}
                                 </div>
 
-                                {/* Online Resources (Max 3) */}
                                 <div className="card border p-3 mb-3 rounded-3">
                                     <div className="d-flex justify-content-between align-items-center mb-2">
                                         <h6 className="fw-bold mb-0 text-primary">Online Resources (Maximum 3)</h6>
