@@ -15,6 +15,7 @@ import CourseStructureView from "../pages/admin/CourseStructureView";
 import Curriculum from "../pages/admin/Curriculum";
 import FacultyDashboard from "../pages/faculty/FacultyDashboard";
 import FacultyCurriculum from "../pages/faculty/FacultyCurriculum";
+import FacultyPortal from "../pages/faculty/FacultyPortal";
 
 function AppRoutes() {
     const { user } = useAuth();
@@ -134,6 +135,7 @@ function AppRoutes() {
                         : <Navigate to="/login" />
                 }
             />
+            <Route path="/faculty/portal" element={<FacultyPortal />} />
 
             <Route
                 path="*"

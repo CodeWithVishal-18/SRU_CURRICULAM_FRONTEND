@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { toast } from "react-toastify";
 import api from "../services/api";
 
@@ -7,6 +7,7 @@ export default function TextSyllabusModal({
     type,
     readOnly = false,
     isAdmin = false,
+    isFaculty = false,
     programHeader = "", // e.g., "R25-UG - CSAI (B.Tech – Computer Science and Engineering)"
     onClose,
     onSuccess,
@@ -31,6 +32,13 @@ export default function TextSyllabusModal({
     const [rejectRemark, setRejectRemark] = useState("");
     const [currentStatus, setCurrentStatus] = useState(item.syllabusStatus || "NOT_UPLOADED");
 
+    // Remarks state
+    const [remarksList, setRemarksList] = useState([]);
+    const [showRemarksViewer, setShowRemarksViewer] = useState(false);
+    const [showAddRemarkDrawer, setShowAddRemarkDrawer] = useState(false);
+    const [newFacultyRemark, setNewFacultyRemark] = useState("");
+    const [remarkSubmitting, setRemarkSubmitting] = useState(false);
+
     // Form fields
     const [courseType, setCourseType] = useState(item.category || "Engineering Science");
     const [prerequisite, setPrerequisite] = useState("NA");
@@ -49,8 +57,14 @@ export default function TextSyllabusModal({
 
             try {
                 setLoading(true);
-                const res = await api.get(`/api/syllabi/${syllabusId}`);
+                const [res, remarksRes] = await Promise.all([
+                    api.get(`/api/syllabi/${syllabusId}`),
+                    api.get(`/api/syllabi/${syllabusId}/remarks`).catch(() => ({ data: [] })),
+                ]);
+
                 const data = res.data?.data || res.data;
+                setRemarksList(remarksRes.data || []);
+
                 if (data) {
                     if (data.status) setCurrentStatus(data.status);
                     if (data.rejectionReason) setRejectionReason(data.rejectionReason);
@@ -112,6 +126,32 @@ export default function TextSyllabusModal({
         }
         updated[uIdx].topics.splice(tIdx, 1);
         setUnits(updated);
+    };
+
+    // =========================================================
+    // FACULTY SUBMIT REMARK / SUGGESTION
+    // =========================================================
+    const handleAddFacultyRemark = async () => {
+        if (!newFacultyRemark.trim()) {
+            toast.error("Please enter your remark/suggestion");
+            return;
+        }
+        if (!item.syllabusId) return;
+
+        try {
+            setRemarkSubmitting(true);
+            const res = await api.post(`/api/syllabi/${item.syllabusId}/remarks`, {
+                remarkText: newFacultyRemark.trim(),
+            });
+            toast.success("Your suggestion has been submitted successfully");
+            setRemarksList([res.data, ...remarksList]);
+            setNewFacultyRemark("");
+            setShowAddRemarkDrawer(false);
+        } catch (err) {
+            toast.error(err.response?.data?.message || "Failed to submit suggestion");
+        } finally {
+            setRemarkSubmitting(false);
+        }
     };
 
     // =========================================================
@@ -493,7 +533,7 @@ export default function TextSyllabusModal({
                                     </div>
                                 )}
 
-                                {/* REJECTION BANNER FOR HOD / DEAN */}
+                                {/* REJECTION BANNER */}
                                 {currentStatus === "REJECTED" && (
                                     <div className="alert alert-danger border-0 d-flex justify-content-between align-items-center mb-4 p-3 rounded-3">
                                         <div>
@@ -505,13 +545,15 @@ export default function TextSyllabusModal({
                                                 <strong>Remark: </strong> {rejectionReason || "Please revise and upload another version."}
                                             </div>
                                         </div>
-                                        <button
-                                            type="button"
-                                            className="btn btn-sm btn-danger px-3 text-nowrap"
-                                            onClick={() => setIsEditMode(true)}
-                                        >
-                                            <i className="bi bi-pencil-square me-1"></i> Edit & Re-Upload
-                                        </button>
+                                        {!isFaculty && (
+                                            <button
+                                                type="button"
+                                                className="btn btn-sm btn-danger px-3 text-nowrap"
+                                                onClick={() => setIsEditMode(true)}
+                                            >
+                                                <i className="bi bi-pencil-square me-1"></i> Edit & Re-Upload
+                                            </button>
+                                        )}
                                     </div>
                                 )}
 
@@ -545,7 +587,6 @@ export default function TextSyllabusModal({
 
                                 <div className="mb-4">
                                     <h6 className="fw-bold text-dark border-bottom pb-2">Course Outcomes:</h6>
-                                    <p className="text-muted small mb-2">At the end of the course, the student will be able to:</p>
                                     <ul className="list-unstyled ps-2 mb-0">
                                         {courseOutcomes.map((co, idx) => (
                                             <li key={idx} className="mb-2"><strong>CO{idx + 1}:</strong> {co}</li>
@@ -623,6 +664,82 @@ export default function TextSyllabusModal({
                                                 </li>
                                             ))}
                                         </ul>
+                                    </div>
+                                )}
+
+                                {/* FACULTY ADD REMARK DRAWER */}
+                                {showAddRemarkDrawer && (
+                                    <div className="border border-warning rounded-3 p-3 mt-4 bg-warning-subtle shadow-sm">
+                                        <h6 className="fw-bold text-dark mb-2">
+                                            <i className="bi bi-chat-left-dots-fill me-2 text-warning-emphasis"></i>
+                                            Suggest Changes for this Syllabus
+                                        </h6>
+                                        <textarea
+                                            className="form-control mb-2"
+                                            rows="3"
+                                            placeholder="Specify your suggestions or recommended improvements..."
+                                            value={newFacultyRemark}
+                                            onChange={(e) => setNewFacultyRemark(e.target.value)}
+                                        ></textarea>
+                                        <div className="d-flex justify-content-end gap-2">
+                                            <button
+                                                type="button"
+                                                className="btn btn-sm btn-light"
+                                                onClick={() => setShowAddRemarkDrawer(false)}
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="btn btn-sm btn-primary"
+                                                disabled={remarkSubmitting}
+                                                onClick={handleAddFacultyRemark}
+                                            >
+                                                {remarkSubmitting ? "Submitting..." : "Submit Suggestion"}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* SEE REMARKS SECTION FOR ADMIN & HOD */}
+                                {showRemarksViewer && (
+                                    <div className="border border-info rounded-3 p-3 mt-4 bg-light shadow-sm">
+                                        <div className="d-flex justify-content-between align-items-center mb-3">
+                                            <h6 className="fw-bold text-primary mb-0">
+                                                <i className="bi bi-chat-quote-fill me-2"></i>
+                                                Faculty Suggestions & Remarks ({remarksList.length})
+                                            </h6>
+                                            <button
+                                                type="button"
+                                                className="btn btn-sm btn-outline-secondary"
+                                                onClick={() => setShowRemarksViewer(false)}
+                                            >
+                                                Hide
+                                            </button>
+                                        </div>
+
+                                        {remarksList.length === 0 ? (
+                                            <p className="text-muted small mb-0">No faculty remarks or suggestions yet.</p>
+                                        ) : (
+                                            <div className="d-flex flex-column gap-2">
+                                                {remarksList.map((rem) => (
+                                                    <div key={rem.id} className="card border-0 bg-white p-2 shadow-sm">
+                                                        <div className="d-flex justify-content-between align-items-center">
+                                                            <div>
+                                                                <strong className="text-dark">{rem.facultyName}</strong>
+                                                                <small className="text-muted ms-2">
+                                                                    ({rem.employeeId}{rem.departmentCode ? ` • ${rem.departmentCode}` : ""})
+                                                                </small>
+                                                            </div>
+                                                            <small className="text-muted">
+                                                                {new Date(rem.createdAt).toLocaleString()}
+                                                            </small>
+                                                        </div>
+                                                        <p className="mb-0 text-secondary mt-1 small">{rem.remarkText}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -838,76 +955,103 @@ export default function TextSyllabusModal({
                     <div className="modal-footer d-flex justify-content-between bg-light py-2 px-4">
                         <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>Close</button>
 
-                        {!isEditMode && isAdmin && currentStatus === "UPLOADED" && (
-                            <div className="d-flex align-items-center gap-2">
-                                {showRejectInput ? (
-                                    <div className="d-flex gap-2 align-items-center">
-                                        <input
-                                            type="text"
-                                            className="form-control form-control-sm"
-                                            placeholder="Enter rejection remark (mandatory)..."
-                                            value={rejectRemark}
-                                            onChange={(e) => setRejectRemark(e.target.value)}
-                                            style={{ minWidth: "260px" }}
-                                        />
-                                        <button
-                                            type="button"
-                                            className="btn btn-sm btn-danger text-nowrap"
-                                            disabled={submitting}
-                                            onClick={() => handleAdminReview("REJECTED")}
-                                        >
-                                            Confirm Reject
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="btn btn-sm btn-light"
-                                            onClick={() => setShowRejectInput(false)}
-                                        >
-                                            Cancel
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <>
-                                        <button
-                                            type="button"
-                                            className="btn btn-outline-danger btn-sm"
-                                            onClick={() => setShowRejectInput(true)}
-                                        >
-                                            Reject with Remark
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="btn btn-success btn-sm px-3"
-                                            disabled={submitting}
-                                            onClick={() => handleAdminReview("APPROVED")}
-                                        >
-                                            Approve Syllabus
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                        )}
+                        <div className="d-flex align-items-center gap-2">
+                            {/* FACULTY BUTTON: ADD REMARK */}
+                            {!isEditMode && isFaculty && (
+                                <button
+                                    type="button"
+                                    className="btn btn-outline-warning btn-sm fw-semibold"
+                                    onClick={() => setShowAddRemarkDrawer(!showAddRemarkDrawer)}
+                                >
+                                    <i className="bi bi-pencil-square me-1"></i>
+                                    {showAddRemarkDrawer ? "Close Remark" : "Add Remark"}
+                                </button>
+                            )}
 
-                        {isEditMode && (
-                            <div className="d-flex gap-2">
+                            {/* ADMIN & HOD BUTTON: SEE REMARKS */}
+                            {!isEditMode && !isFaculty && (
                                 <button
                                     type="button"
-                                    className="btn btn-outline-warning btn-sm"
-                                    disabled={submitting}
-                                    onClick={() => handleSave(true)}
+                                    className="btn btn-outline-info btn-sm fw-semibold"
+                                    onClick={() => setShowRemarksViewer(!showRemarksViewer)}
                                 >
-                                    Save Draft
+                                    <i className="bi bi-chat-text-fill me-1"></i>
+                                    See Remarks {remarksList.length > 0 && `(${remarksList.length})`}
                                 </button>
-                                <button
-                                    type="button"
-                                    className="btn btn-primary btn-sm px-4"
-                                    disabled={submitting}
-                                    onClick={() => handleSave(false)}
-                                >
-                                    {submitting ? "Submitting..." : "Submit Syllabus"}
-                                </button>
-                            </div>
-                        )}
+                            )}
+
+                            {/* ADMIN ACCEPT / REJECT BUTTONS */}
+                            {!isEditMode && isAdmin && currentStatus === "UPLOADED" && (
+                                <>
+                                    {showRejectInput ? (
+                                        <div className="d-flex gap-2 align-items-center">
+                                            <input
+                                                type="text"
+                                                className="form-control form-control-sm"
+                                                placeholder="Enter rejection remark (mandatory)..."
+                                                value={rejectRemark}
+                                                onChange={(e) => setRejectRemark(e.target.value)}
+                                                style={{ minWidth: "260px" }}
+                                            />
+                                            <button
+                                                type="button"
+                                                className="btn btn-sm btn-danger text-nowrap"
+                                                disabled={submitting}
+                                                onClick={() => handleAdminReview("REJECTED")}
+                                            >
+                                                Confirm Reject
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="btn btn-sm btn-light"
+                                                onClick={() => setShowRejectInput(false)}
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <button
+                                                type="button"
+                                                className="btn btn-outline-danger btn-sm"
+                                                onClick={() => setShowRejectInput(true)}
+                                            >
+                                                Reject with Remark
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="btn btn-success btn-sm px-3"
+                                                disabled={submitting}
+                                                onClick={() => handleAdminReview("APPROVED")}
+                                            >
+                                                Approve Syllabus
+                                            </button>
+                                        </>
+                                    )}
+                                </>
+                            )}
+
+                            {isEditMode && (
+                                <div className="d-flex gap-2">
+                                    <button
+                                        type="button"
+                                        className="btn btn-outline-warning btn-sm"
+                                        disabled={submitting}
+                                        onClick={() => handleSave(true)}
+                                    >
+                                        Save Draft
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="btn btn-primary btn-sm px-4"
+                                        disabled={submitting}
+                                        onClick={() => handleSave(false)}
+                                    >
+                                        {submitting ? "Submitting..." : "Submit Syllabus"}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
