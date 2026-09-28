@@ -563,7 +563,7 @@ function FacultyCurriculum() {
                                     ) : (
                                         <>
                                             <i className="bi bi-file-earmark-pdf-fill"></i>
-                                            <span>Book</span>
+                                            <span>PDF</span>
                                         </>
                                     )}
                                 </button>
