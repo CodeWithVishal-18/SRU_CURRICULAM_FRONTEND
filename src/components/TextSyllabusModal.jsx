@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { toast } from "react-toastify";
 import api from "../services/api";
 
@@ -8,7 +8,7 @@ export default function TextSyllabusModal({
     readOnly = false,
     isAdmin = false,
     isFaculty = false,
-    programHeader = "", // e.g., "R25-UG - CSAI (B.Tech – Computer Science and Engineering)"
+    programHeader = "",
     onClose,
     onSuccess,
 }) {
@@ -32,12 +32,11 @@ export default function TextSyllabusModal({
     const [rejectRemark, setRejectRemark] = useState("");
     const [currentStatus, setCurrentStatus] = useState(item.syllabusStatus || "NOT_UPLOADED");
 
-    // Remarks state
+    // Unified Discussion / Remarks state
     const [remarksList, setRemarksList] = useState([]);
-    const [showRemarksViewer, setShowRemarksViewer] = useState(false);
-    const [showAddRemarkDrawer, setShowAddRemarkDrawer] = useState(false);
-    const [newFacultyRemark, setNewFacultyRemark] = useState("");
-    const [remarkSubmitting, setRemarkSubmitting] = useState(false);
+    const [newComment, setNewComment] = useState("");
+    const [postingComment, setPostingComment] = useState(false);
+    const commentsEndRef = useRef(null);
 
     // Form fields
     const [courseType, setCourseType] = useState(item.category || "Engineering Science");
@@ -49,6 +48,15 @@ export default function TextSyllabusModal({
     const [textbooks, setTextbooks] = useState([""]);
     const [referenceBooks, setReferenceBooks] = useState([""]);
     const [onlineResources, setOnlineResources] = useState([""]);
+
+    const fetchRemarks = async (syllabusId) => {
+        try {
+            const res = await api.get(`/api/syllabi/${syllabusId}/remarks`);
+            setRemarksList(res.data || []);
+        } catch {
+            console.warn("Could not load remarks");
+        }
+    };
 
     useEffect(() => {
         const loadSyllabus = async () => {
@@ -129,33 +137,38 @@ export default function TextSyllabusModal({
     };
 
     // =========================================================
-    // FACULTY SUBMIT REMARK / SUGGESTION
+    // POST COMMENT / REMARK (ANY USER)
     // =========================================================
-    const handleAddFacultyRemark = async () => {
-        if (!newFacultyRemark.trim()) {
-            toast.error("Please enter your remark/suggestion");
+    const handlePostComment = async () => {
+        if (!newComment.trim()) {
+            toast.error("Please enter your comment or remark");
             return;
         }
-        if (!item.syllabusId) return;
+        if (!item.syllabusId) {
+            toast.error("Syllabus must be saved before adding comments");
+            return;
+        }
 
         try {
-            setRemarkSubmitting(true);
+            setPostingComment(true);
             const res = await api.post(`/api/syllabi/${item.syllabusId}/remarks`, {
-                remarkText: newFacultyRemark.trim(),
+                remarkText: newComment.trim(),
             });
-            toast.success("Your suggestion has been submitted successfully");
-            setRemarksList([res.data, ...remarksList]);
-            setNewFacultyRemark("");
-            setShowAddRemarkDrawer(false);
+            toast.success("Comment added to discussion");
+            setRemarksList((prev) => [...prev, res.data]);
+            setNewComment("");
+            setTimeout(() => {
+                commentsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            }, 100);
         } catch (err) {
-            toast.error(err.response?.data?.message || "Failed to submit suggestion");
+            toast.error(err.response?.data?.message || "Failed to post comment");
         } finally {
-            setRemarkSubmitting(false);
+            setPostingComment(false);
         }
     };
 
     // =========================================================
-    // PRINT / DOWNLOAD AS PDF IN APPROVED TEMPLATE FORMAT
+    // PRINT / DOWNLOAD AS PDF
     // =========================================================
     const handleDownloadPdf = () => {
         const printWindow = window.open("", "_blank", "width=900,height=800");
@@ -177,76 +190,18 @@ export default function TextSyllabusModal({
             <head>
                 <title>${item.courseCode || "Course"}_${item.courseName || "Syllabus"}</title>
                 <style>
-                    @page {
-                        size: A4;
-                        margin: 18mm 16mm;
-                    }
-                    body {
-                        font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
-                        color: #111;
-                        line-height: 1.45;
-                        font-size: 11pt;
-                        margin: 0;
-                        padding: 0;
-                    }
-                    .header-banner {
-                        text-align: center;
-                        border-bottom: 2px solid #0d6efd;
-                        padding-bottom: 8px;
-                        margin-bottom: 16px;
-                    }
-                    .header-banner h4 {
-                        margin: 0 0 4px 0;
-                        font-size: 14pt;
-                        text-transform: uppercase;
-                        letter-spacing: 0.5px;
-                    }
-                    .header-banner h5 {
-                        margin: 0;
-                        font-size: 11pt;
-                        font-weight: 600;
-                        color: #0d6efd;
-                    }
-                    table.meta-table {
-                        width: 100%;
-                        border-collapse: collapse;
-                        margin-bottom: 18px;
-                    }
-                    table.meta-table th, table.meta-table td {
-                        border: 1px solid #333;
-                        padding: 6px 10px;
-                        font-size: 10.5pt;
-                    }
-                    .section-title {
-                        font-size: 11.5pt;
-                        font-weight: bold;
-                        border-bottom: 1.5px solid #222;
-                        padding-bottom: 3px;
-                        margin-top: 16px;
-                        margin-bottom: 8px;
-                        text-transform: uppercase;
-                    }
-                    ul, ol {
-                        margin-top: 4px;
-                        margin-bottom: 12px;
-                        padding-left: 22px;
-                    }
-                    li {
-                        margin-bottom: 4px;
-                    }
-                    .unit-block {
-                        margin-bottom: 10px;
-                    }
-                    .unit-title {
-                        font-weight: bold;
-                        color: #000;
-                        margin-bottom: 3px;
-                    }
-                    .unit-topics {
-                        margin: 0;
-                        padding-left: 18px;
-                        color: #222;
-                    }
+                    @page { size: A4; margin: 18mm 16mm; }
+                    body { font-family: 'Segoe UI', Arial, sans-serif; color: #111; line-height: 1.45; font-size: 11pt; margin: 0; padding: 0; }
+                    .header-banner { text-align: center; border-bottom: 2px solid #0d6efd; padding-bottom: 8px; margin-bottom: 16px; }
+                    .header-banner h4 { margin: 0 0 4px 0; font-size: 14pt; text-transform: uppercase; }
+                    .header-banner h5 { margin: 0; font-size: 11pt; font-weight: 600; color: #0d6efd; }
+                    table.meta-table { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+                    table.meta-table td { border: 1px solid #333; padding: 6px 10px; font-size: 10.5pt; }
+                    .section-title { font-size: 11.5pt; font-weight: bold; border-bottom: 1.5px solid #222; padding-bottom: 3px; margin-top: 16px; margin-bottom: 8px; text-transform: uppercase; }
+                    ul, ol { margin-top: 4px; margin-bottom: 12px; padding-left: 22px; }
+                    li { margin-bottom: 4px; }
+                    .unit-block { margin-bottom: 10px; }
+                    .unit-title { font-weight: bold; color: #000; margin-bottom: 3px; }
                 </style>
             </head>
             <body>
@@ -284,9 +239,6 @@ export default function TextSyllabusModal({
                 </table>
 
                 <div class="section-title">Course Outcomes:</div>
-                <div style="font-size: 10pt; margin-bottom: 6px; font-style: italic;">
-                    At the end of the course, the student will be able to:
-                </div>
                 <ul style="list-style-type: none; padding-left: 0;">
                     ${validCOs.map((co, idx) => `<li style="margin-bottom: 6px;"><strong>CO${idx + 1}:</strong> ${co}</li>`).join("")}
                 </ul>
@@ -296,7 +248,7 @@ export default function TextSyllabusModal({
                     ${units.map((u) => `
                         <div class="unit-block">
                             <div class="unit-title">${u.title}</div>
-                            <ul class="unit-topics">
+                            <ul style="margin: 0; padding-left: 18px;">
                                 ${(u.topics || []).filter(t => t.trim()).map(top => `<li>${top}</li>`).join("")}
                             </ul>
                         </div>
@@ -305,37 +257,27 @@ export default function TextSyllabusModal({
 
                 ${R > 0 && validRecs.length > 0 ? `
                     <div class="section-title">Recitation / Tutorial Topics</div>
-                    <ol>
-                        ${validRecs.map((rec) => `<li>${rec}</li>`).join("")}
-                    </ol>
+                    <ol>${validRecs.map((rec) => `<li>${rec}</li>`).join("")}</ol>
                 ` : ""}
 
                 ${P > 0 && validLabs.length > 0 ? `
                     <div class="section-title">Lab / Product Components</div>
-                    <ol>
-                        ${validLabs.map((lab) => `<li>${lab}</li>`).join("")}
-                    </ol>
+                    <ol>${validLabs.map((lab) => `<li>${lab}</li>`).join("")}</ol>
                 ` : ""}
 
                 ${validTbs.length > 0 ? `
                     <div class="section-title">Textbooks</div>
-                    <ol>
-                        ${validTbs.map((tb) => `<li>${tb}</li>`).join("")}
-                    </ol>
+                    <ol>${validTbs.map((tb) => `<li>${tb}</li>`).join("")}</ol>
                 ` : ""}
 
                 ${validRbs.length > 0 ? `
                     <div class="section-title">Reference Books</div>
-                    <ol>
-                        ${validRbs.map((rb) => `<li>${rb}</li>`).join("")}
-                    </ol>
+                    <ol>${validRbs.map((rb) => `<li>${rb}</li>`).join("")}</ol>
                 ` : ""}
 
                 ${validRes.length > 0 ? `
                     <div class="section-title">Online Resources / Useful Links</div>
-                    <ul>
-                        ${validRes.map((res) => `<li><a href="${res.startsWith("http") ? res : `https://${res}`}">${res}</a></li>`).join("")}
-                    </ul>
+                    <ul>${validRes.map((res) => `<li><a href="${res.startsWith("http") ? res : `https://${res}`}">${res}</a></li>`).join("")}</ul>
                 ` : ""}
             </body>
             </html>
@@ -344,7 +286,6 @@ export default function TextSyllabusModal({
         printWindow.document.open();
         printWindow.document.write(htmlContent);
         printWindow.document.close();
-
         printWindow.onload = () => {
             printWindow.focus();
             printWindow.print();
@@ -455,7 +396,7 @@ export default function TextSyllabusModal({
         try {
             setSubmitting(true);
             const res = await api.post("/api/syllabi/text", payload);
-            toast.success(isDraft ? "Draft saved successfully" : "Syllabus submitted and status updated to Uploaded");
+            toast.success(isDraft ? "Draft saved successfully" : "Syllabus submitted and updated across all departments");
             if (onSuccess) onSuccess(res.data);
             onClose();
         } catch (err) {
@@ -465,6 +406,9 @@ export default function TextSyllabusModal({
         }
     };
 
+    // =========================================================
+    // ADMIN ONLY REVIEW ACTIONS (APPROVE & REJECT)
+    // =========================================================
     const handleAdminReview = async (status) => {
         if (!item.syllabusId) return;
 
@@ -479,7 +423,7 @@ export default function TextSyllabusModal({
                 status,
                 rejectionReason: status === "REJECTED" ? rejectRemark.trim() : null,
             });
-            toast.success(status === "APPROVED" ? "Syllabus Approved successfully" : "Syllabus Rejected with remarks");
+            toast.success(status === "APPROVED" ? "Syllabus Approved across all departments" : "Syllabus Rejected with remarks");
             if (onSuccess) onSuccess();
             onClose();
         } catch (err) {
@@ -487,6 +431,12 @@ export default function TextSyllabusModal({
         } finally {
             setSubmitting(false);
         }
+    };
+
+    const getRoleBadge = (role) => {
+        if (role === "ADMIN") return "bg-danger";
+        if (role === "HOD" || role === "DEAN") return "bg-primary";
+        return "bg-secondary";
     };
 
     return (
@@ -501,7 +451,6 @@ export default function TextSyllabusModal({
                             <small className="opacity-75">{item.courseCode || ""} - {item.courseName}</small>
                         </div>
                         <div className="d-flex align-items-center gap-2">
-                            {/* DOWNLOAD PDF BUTTON */}
                             {!isEditMode && (
                                 <button
                                     type="button"
@@ -526,14 +475,13 @@ export default function TextSyllabusModal({
                         ) : !isEditMode ? (
                             /* READ ONLY VIEW MODE */
                             <div className="bg-white p-4 border rounded shadow-sm">
-                                {/* PROGRAM BANNER */}
                                 {programHeader && (
                                     <div className="text-center border-bottom pb-2 mb-4">
                                         <h5 className="fw-bold mb-0 text-primary">{programHeader}</h5>
                                     </div>
                                 )}
 
-                                {/* REJECTION BANNER */}
+                                {/* REJECTION BANNER: HOD/DEAN can edit & re-upload, Admin can also inspect */}
                                 {currentStatus === "REJECTED" && (
                                     <div className="alert alert-danger border-0 d-flex justify-content-between align-items-center mb-4 p-3 rounded-3">
                                         <div>
@@ -545,7 +493,7 @@ export default function TextSyllabusModal({
                                                 <strong>Remark: </strong> {rejectionReason || "Please revise and upload another version."}
                                             </div>
                                         </div>
-                                        {!isFaculty && (
+                                        {!isFaculty && !isAdmin && (
                                             <button
                                                 type="button"
                                                 className="btn btn-sm btn-danger px-3 text-nowrap"
@@ -653,7 +601,7 @@ export default function TextSyllabusModal({
                                 )}
 
                                 {onlineResources.length > 0 && (
-                                    <div className="mb-2">
+                                    <div className="mb-4">
                                         <h6 className="fw-bold text-dark border-bottom pb-2">Online Resources / Useful Links</h6>
                                         <ul className="list-unstyled ps-3 mb-0">
                                             {onlineResources.map((res, oIdx) => (
@@ -667,81 +615,78 @@ export default function TextSyllabusModal({
                                     </div>
                                 )}
 
-                                {/* FACULTY ADD REMARK DRAWER */}
-                                {showAddRemarkDrawer && (
-                                    <div className="border border-warning rounded-3 p-3 mt-4 bg-warning-subtle shadow-sm">
-                                        <h6 className="fw-bold text-dark mb-2">
-                                            <i className="bi bi-chat-left-dots-fill me-2 text-warning-emphasis"></i>
-                                            Suggest Changes for this Syllabus
+                                {/* UNIFIED DISCUSSION & REMARKS FEED (SHARED ACROSS ALL ROLES) */}
+                                <div className="border rounded-3 p-3 mt-4 bg-light shadow-sm">
+                                    <div className="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2">
+                                        <h6 className="fw-bold text-primary mb-0">
+                                            <i className="bi bi-chat-left-text-fill me-2"></i>
+                                            Discussion & Remarks Feed ({remarksList.length})
                                         </h6>
-                                        <textarea
-                                            className="form-control mb-2"
-                                            rows="3"
-                                            placeholder="Specify your suggestions or recommended improvements..."
-                                            value={newFacultyRemark}
-                                            onChange={(e) => setNewFacultyRemark(e.target.value)}
-                                        ></textarea>
-                                        <div className="d-flex justify-content-end gap-2">
-                                            <button
-                                                type="button"
-                                                className="btn btn-sm btn-light"
-                                                onClick={() => setShowAddRemarkDrawer(false)}
-                                            >
-                                                Cancel
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="btn btn-sm btn-primary"
-                                                disabled={remarkSubmitting}
-                                                onClick={handleAddFacultyRemark}
-                                            >
-                                                {remarkSubmitting ? "Submitting..." : "Submit Suggestion"}
-                                            </button>
-                                        </div>
+                                        <small className="text-muted">
+                                            Shared across all departments teaching <strong>{item.courseCode}</strong>
+                                        </small>
                                     </div>
-                                )}
 
-                                {/* SEE REMARKS SECTION FOR ADMIN & HOD */}
-                                {showRemarksViewer && (
-                                    <div className="border border-info rounded-3 p-3 mt-4 bg-light shadow-sm">
-                                        <div className="d-flex justify-content-between align-items-center mb-3">
-                                            <h6 className="fw-bold text-primary mb-0">
-                                                <i className="bi bi-chat-quote-fill me-2"></i>
-                                                Faculty Suggestions & Remarks ({remarksList.length})
-                                            </h6>
-                                            <button
-                                                type="button"
-                                                className="btn btn-sm btn-outline-secondary"
-                                                onClick={() => setShowRemarksViewer(false)}
-                                            >
-                                                Hide
-                                            </button>
-                                        </div>
-
+                                    {/* Comments Stream */}
+                                    <div className="d-flex flex-column gap-2 mb-3" style={{ maxHeight: "250px", overflowY: "auto" }}>
                                         {remarksList.length === 0 ? (
-                                            <p className="text-muted small mb-0">No faculty remarks or suggestions yet.</p>
+                                            <p className="text-muted small mb-0 py-2 text-center fst-italic">
+                                                No remarks or suggestions posted yet. Start the discussion below.
+                                            </p>
                                         ) : (
-                                            <div className="d-flex flex-column gap-2">
-                                                {remarksList.map((rem) => (
-                                                    <div key={rem.id} className="card border-0 bg-white p-2 shadow-sm">
-                                                        <div className="d-flex justify-content-between align-items-center">
-                                                            <div>
-                                                                <strong className="text-dark">{rem.facultyName}</strong>
-                                                                <small className="text-muted ms-2">
-                                                                    ({rem.employeeId}{rem.departmentCode ? ` • ${rem.departmentCode}` : ""})
-                                                                </small>
-                                                            </div>
-                                                            <small className="text-muted">
-                                                                {new Date(rem.createdAt).toLocaleString()}
-                                                            </small>
+                                            remarksList.map((rem) => (
+                                                <div key={rem.id} className="card border-0 bg-white p-2.5 shadow-sm">
+                                                    <div className="d-flex justify-content-between align-items-center mb-1">
+                                                        <div className="d-flex align-items-center gap-2">
+                                                            <strong className="text-dark small">{rem.facultyName || rem.employeeId}</strong>
+                                                            <span className={`badge ${getRoleBadge(rem.userRole)}`} style={{ fontSize: "0.68rem" }}>
+                                                                {rem.userRole || "USER"}
+                                                            </span>
+                                                            {rem.departmentCode && (
+                                                                <span className="badge bg-light text-secondary border" style={{ fontSize: "0.68rem" }}>
+                                                                    {rem.departmentCode}
+                                                                </span>
+                                                            )}
                                                         </div>
-                                                        <p className="mb-0 text-secondary mt-1 small">{rem.remarkText}</p>
+                                                        <small className="text-muted" style={{ fontSize: "0.72rem" }}>
+                                                            {new Date(rem.createdAt).toLocaleString()}
+                                                        </small>
                                                     </div>
-                                                ))}
-                                            </div>
+                                                    <p className="mb-0 text-secondary small ps-1" style={{ whiteSpace: "pre-wrap" }}>
+                                                        {rem.remarkText}
+                                                    </p>
+                                                </div>
+                                            ))
                                         )}
+                                        <div ref={commentsEndRef} />
                                     </div>
-                                )}
+
+                                    {/* Add Comment Box */}
+                                    <div className="input-group">
+                                        <textarea
+                                            className="form-control form-control-sm"
+                                            rows="2"
+                                            placeholder="Write a comment, feedback, or suggestion for this syllabus..."
+                                            value={newComment}
+                                            onChange={(e) => setNewComment(e.target.value)}
+                                        ></textarea>
+                                        <button
+                                            className="btn btn-primary btn-sm px-3 d-flex align-items-center gap-1"
+                                            type="button"
+                                            disabled={postingComment}
+                                            onClick={handlePostComment}
+                                        >
+                                            {postingComment ? (
+                                                <span className="spinner-border spinner-border-sm"></span>
+                                            ) : (
+                                                <>
+                                                    <i className="bi bi-send-fill"></i>
+                                                    <span>Post</span>
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         ) : (
                             /* EDITING / UPLOAD FORM */
@@ -956,42 +901,17 @@ export default function TextSyllabusModal({
                         <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>Close</button>
 
                         <div className="d-flex align-items-center gap-2">
-                            {/* FACULTY BUTTON: ADD REMARK */}
-                            {!isEditMode && isFaculty && (
-                                <button
-                                    type="button"
-                                    className="btn btn-outline-warning btn-sm fw-semibold"
-                                    onClick={() => setShowAddRemarkDrawer(!showAddRemarkDrawer)}
-                                >
-                                    <i className="bi bi-pencil-square me-1"></i>
-                                    {showAddRemarkDrawer ? "Close Remark" : "Add Remark"}
-                                </button>
-                            )}
-
-                            {/* ADMIN & HOD BUTTON: SEE REMARKS */}
-                            {!isEditMode && !isFaculty && (
-                                <button
-                                    type="button"
-                                    className="btn btn-outline-info btn-sm fw-semibold"
-                                    onClick={() => setShowRemarksViewer(!showRemarksViewer)}
-                                >
-                                    <i className="bi bi-chat-text-fill me-1"></i>
-                                    See Remarks {remarksList.length > 0 && `(${remarksList.length})`}
-                                </button>
-                            )}
-
-                            {/* ADMIN ACCEPT / REJECT BUTTONS */}
-                            {!isEditMode && isAdmin && currentStatus === "UPLOADED" && (
+                            {/* STRICTLY ADMIN-ONLY REVIEW ACTIONS */}
+                            {!isEditMode && isAdmin && (currentStatus === "UPLOADED" || currentStatus === "APPROVED") && (
                                 <>
                                     {showRejectInput ? (
                                         <div className="d-flex gap-2 align-items-center">
                                             <input
                                                 type="text"
                                                 className="form-control form-control-sm"
-                                                placeholder="Enter rejection remark (mandatory)..."
+                                                placeholder="Rejection remark (mandatory)..."
                                                 value={rejectRemark}
                                                 onChange={(e) => setRejectRemark(e.target.value)}
-                                                style={{ minWidth: "260px" }}
                                             />
                                             <button
                                                 type="button"
@@ -1004,7 +924,10 @@ export default function TextSyllabusModal({
                                             <button
                                                 type="button"
                                                 className="btn btn-sm btn-light"
-                                                onClick={() => setShowRejectInput(false)}
+                                                onClick={() => {
+                                                    setShowRejectInput(false);
+                                                    setRejectRemark("");
+                                                }}
                                             >
                                                 Cancel
                                             </button>
@@ -1016,21 +939,26 @@ export default function TextSyllabusModal({
                                                 className="btn btn-outline-danger btn-sm"
                                                 onClick={() => setShowRejectInput(true)}
                                             >
-                                                Reject with Remark
+                                                <i className="bi bi-x-circle me-1"></i>
+                                                {currentStatus === "APPROVED" ? "Reject (Revoke Approval)" : "Reject with Remark"}
                                             </button>
-                                            <button
-                                                type="button"
-                                                className="btn btn-success btn-sm px-3"
-                                                disabled={submitting}
-                                                onClick={() => handleAdminReview("APPROVED")}
-                                            >
-                                                Approve Syllabus
-                                            </button>
+                                            {currentStatus !== "APPROVED" && (
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-success btn-sm px-3"
+                                                    disabled={submitting}
+                                                    onClick={() => handleAdminReview("APPROVED")}
+                                                >
+                                                    <i className="bi bi-check-circle me-1"></i>
+                                                    Approve Syllabus
+                                                </button>
+                                            )}
                                         </>
                                     )}
                                 </>
                             )}
 
+                            {/* EDIT MODE SUBMIT / DRAFT BUTTONS */}
                             {isEditMode && (
                                 <div className="d-flex gap-2">
                                     <button

@@ -12,6 +12,7 @@ import {
 } from "../../services/curriculumService";
 import TextSyllabusModal from "../../components/TextSyllabusModal";
 import SyllabusAuditLogModal from "../../components/SyllabusAuditLogModal";
+import { downloadCompleteCurriculumBook } from "../../utils/curriculumBookDownloader";
 
 function Curriculum() {
     const [regulations, setRegulations] = useState([]);
@@ -29,6 +30,7 @@ function Curriculum() {
     const [initialLoading, setInitialLoading] = useState(true);
     const [curriculumLoading, setCurriculumLoading] = useState(false);
     const [subjectsLoading, setSubjectsLoading] = useState({});
+    const [downloadingBook, setDownloadingBook] = useState(false);
 
     // Syllabus Modal State
     const [textModal, setTextModal] = useState({
@@ -278,6 +280,36 @@ function Curriculum() {
         }
     };
 
+    const handleDownloadFullBook = async () => {
+        if (semester !== "ALL") {
+            toast.info("Select 'All Semesters' in the dropdown to download the full structure book.");
+            return;
+        }
+        if (curricula.length === 0) {
+            toast.warning("Please search and load the curriculum first.");
+            return;
+        }
+
+        try {
+            setDownloadingBook(true);
+            toast.info("Compiling complete curriculum and all syllabi into PDF book...");
+            await downloadCompleteCurriculumBook({
+                regulationCode,
+                departmentCode,
+                programCode,
+                programName: selectedProgram?.name,
+                curricula,
+                subjectsMap: subjects,
+            });
+            toast.success("Complete Curriculum Book generated successfully!");
+        } catch (error) {
+            console.error("PDF generation failed:", error);
+            toast.error("Failed to generate complete book");
+        } finally {
+            setDownloadingBook(false);
+        }
+    };
+
     const handleToggleElectiveGroup = async (group) => {
         const groupId = group.id;
         setExpandedGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
@@ -394,7 +426,6 @@ function Curriculum() {
         return s;
     };
 
-    // Compact Action Buttons
     const renderActionButtons = (item, type) => {
         const status = getSyllabusStatus(item);
         const isUploaded = status === "UPLOADED" || status === "APPROVED" || status === "DRAFT";
@@ -492,7 +523,7 @@ function Curriculum() {
                                 ))}
                             </select>
                         </div>
-                        <div className="col-12 col-md-3">
+                        <div className="col-12 col-md-2">
                             <label className="form-label fw-semibold small mb-1">Degree Programme *</label>
                             <select
                                 className="form-select form-select-sm"
@@ -525,15 +556,35 @@ function Curriculum() {
                                 ))}
                             </select>
                         </div>
-                        <div className="col-12 col-md-1">
+                        <div className="col-12 col-md-2 d-flex gap-1">
                             <button
                                 type="button"
-                                className="btn btn-sm btn-primary w-100"
+                                className={`btn btn-sm btn-primary ${semester === "ALL" ? "w-50" : "w-100"}`}
                                 onClick={handleLoadCurriculum}
                                 disabled={curriculumLoading || !programCode || !semester}
+                                title="Search Curriculum"
                             >
-                                {curriculumLoading ? <span className="spinner-border spinner-border-sm"></span> : <i className="bi bi-search"></i>}
+                                {curriculumLoading ? <span className="spinner-border spinner-border-sm"></span> : <><i className="bi bi-search me-1"></i>Search</>}
                             </button>
+
+                            {semester === "ALL" && (
+                                <button
+                                    type="button"
+                                    className="btn btn-sm btn-success w-50 text-nowrap d-flex align-items-center justify-content-center gap-1 shadow-sm"
+                                    disabled={downloadingBook || curriculumLoading || curricula.length === 0}
+                                    onClick={handleDownloadFullBook}
+                                    title="Download Complete Course Structure & Syllabus Book"
+                                >
+                                    {downloadingBook ? (
+                                        <span className="spinner-border spinner-border-sm"></span>
+                                    ) : (
+                                        <>
+                                            <i className="bi bi-file-earmark-pdf-fill"></i>
+                                            <span>Book</span>
+                                        </>
+                                    )}
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -837,6 +888,7 @@ function Curriculum() {
                     type={textModal.type}
                     readOnly={textModal.readOnly}
                     isAdmin={true}
+                    isFaculty={false}
                     programHeader={programHeader}
                     onClose={() => setTextModal({ open: false, item: null, type: "course", readOnly: false })}
                     onSuccess={() => handleLoadCurriculum()}

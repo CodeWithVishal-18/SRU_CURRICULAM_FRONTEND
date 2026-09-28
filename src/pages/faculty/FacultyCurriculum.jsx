@@ -12,6 +12,7 @@ import {
     getElectiveSubjectSyllabusStatus,
 } from "../../services/curriculumService";
 import TextSyllabusModal from "../../components/TextSyllabusModal";
+import { downloadCompleteCurriculumBook } from "../../utils/curriculumBookDownloader";
 
 function FacultyCurriculum() {
     const { user } = useAuth();
@@ -31,6 +32,7 @@ function FacultyCurriculum() {
     const [initialLoading, setInitialLoading] = useState(true);
     const [curriculumLoading, setCurriculumLoading] = useState(false);
     const [subjectsLoading, setSubjectsLoading] = useState({});
+    const [downloadingBook, setDownloadingBook] = useState(false);
 
     // Modal state for text syllabus upload / view
     const [textModal, setTextModal] = useState({
@@ -41,13 +43,13 @@ function FacultyCurriculum() {
     });
 
     const userDepartmentCode = user?.departmentCode?.trim().toUpperCase();
-    const isFaculty = Boolean(user && (user.role === "HOD" || user.role === "DEAN"));
+    const isFacultyRole = Boolean(user && (user.role === "HOD" || user.role === "DEAN"));
     const isOwnDepartment = Boolean(
-        isFaculty && userDepartmentCode && departmentCode && userDepartmentCode === departmentCode.trim().toUpperCase()
+        isFacultyRole && userDepartmentCode && departmentCode && userDepartmentCode === departmentCode.trim().toUpperCase()
     );
 
     const canUploadCourse = isOwnDepartment;
-    const canUploadElective = isFaculty;
+    const canUploadElective = isFacultyRole;
 
     useEffect(() => {
         const loadInitialData = async () => {
@@ -109,6 +111,12 @@ function FacultyCurriculum() {
         }
         return list;
     }, [maxSemesters]);
+
+    const programHeader = useMemo(() => {
+        if (!regulationCode && !departmentCode) return "";
+        const progName = selectedProgram?.name ? `(${selectedProgram.name})` : "";
+        return `${regulationCode} - ${departmentCode} ${progName}`.trim();
+    }, [regulationCode, departmentCode, selectedProgram]);
 
     const clearCurriculum = () => {
         setCurricula([]);
@@ -269,6 +277,36 @@ function FacultyCurriculum() {
         }
     };
 
+    const handleDownloadFullBook = async () => {
+        if (semester !== "ALL") {
+            toast.info("Select 'All Semesters' in the dropdown to download the full structure book.");
+            return;
+        }
+        if (curricula.length === 0) {
+            toast.warning("Please search and load the curriculum first.");
+            return;
+        }
+
+        try {
+            setDownloadingBook(true);
+            toast.info("Compiling complete curriculum and all syllabi into PDF book...");
+            await downloadCompleteCurriculumBook({
+                regulationCode,
+                departmentCode,
+                programCode,
+                programName: selectedProgram?.name,
+                curricula,
+                subjectsMap: subjects,
+            });
+            toast.success("Complete Curriculum Book generated successfully!");
+        } catch (error) {
+            console.error("PDF generation failed:", error);
+            toast.error("Failed to generate complete book");
+        } finally {
+            setDownloadingBook(false);
+        }
+    };
+
     const handleToggleElectiveGroup = async (group) => {
         const groupId = group.id;
         setExpandedGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
@@ -383,12 +421,6 @@ function FacultyCurriculum() {
         return s;
     };
 
-    const programHeader = useMemo(() => {
-        if (!regulationCode && !departmentCode) return "";
-        const progName = selectedProgram?.name ? `(${selectedProgram.name})` : "";
-        return `${regulationCode} - ${departmentCode} ${progName}`.trim();
-    }, [regulationCode, departmentCode, selectedProgram]);
-
     const renderSyllabusActions = (item, type) => {
         const status = getSyllabusStatus(item);
         const isRejected = status === "REJECTED";
@@ -397,7 +429,7 @@ function FacultyCurriculum() {
 
         return (
             <div className="d-flex flex-column align-items-center gap-1">
-                <span className={`badge ${getStatusBadgeClass(status)}`}>
+                <span className={`badge ${getStatusBadgeClass(status)}`} style={{ fontSize: "0.72rem", padding: "2px 5px" }}>
                     {getStatusLabel(status)}
                 </span>
                 <div className="d-flex flex-wrap justify-content-center align-items-center gap-1 mt-1">
@@ -406,6 +438,7 @@ function FacultyCurriculum() {
                         <button
                             type="button"
                             className={`btn btn-sm py-0 px-2 ${isRejected ? "btn-danger" : "btn-primary"}`}
+                            style={{ fontSize: "0.75rem" }}
                             onClick={() => setTextModal({ open: true, item, type, readOnly: false })}
                         >
                             <i className="bi bi-pencil-square me-1"></i>
@@ -413,10 +446,11 @@ function FacultyCurriculum() {
                         </button>
                     )}
 
-                    {/* View Button - Enabled if uploaded or rejected so remarks are readable */}
+                    {/* View Button */}
                     <button
                         type="button"
                         className="btn btn-sm btn-outline-primary py-0 px-2"
+                        style={{ fontSize: "0.75rem" }}
                         onClick={() => setTextModal({ open: true, item, type, readOnly: true })}
                         disabled={!hasViewableContent}
                         title={hasViewableContent ? "View Syllabus" : "Syllabus not uploaded"}
@@ -441,18 +475,18 @@ function FacultyCurriculum() {
 
     return (
         <FacultyLayout>
-            <div className="mb-4">
-                <h2 className="fw-bold mb-1">Curriculum & Syllabus</h2>
-                <p className="text-muted mb-0">View semester curriculum and upload syllabi.</p>
+            <div className="mb-3">
+                <h3 className="fw-bold mb-1">Curriculum & Syllabus</h3>
+                <p className="text-muted small mb-0">View semester curriculum and upload syllabi.</p>
             </div>
 
             {/* FILTERS CARD */}
             <div className="card border-0 shadow-sm mb-4">
-                <div className="card-body p-4">
-                    <div className="row g-3 align-items-end">
+                <div className="card-body p-3">
+                    <div className="row g-2 align-items-end">
                         <div className="col-12 col-md-3">
-                            <label className="form-label fw-semibold">Regulation *</label>
-                            <select className="form-select" value={regulationCode} onChange={handleRegulationChange}>
+                            <label className="form-label fw-semibold small mb-1">Regulation *</label>
+                            <select className="form-select form-select-sm" value={regulationCode} onChange={handleRegulationChange}>
                                 <option value="">Select Regulation</option>
                                 {regulations.map((reg) => (
                                     <option key={reg.code} value={reg.code}>
@@ -462,8 +496,8 @@ function FacultyCurriculum() {
                             </select>
                         </div>
                         <div className="col-12 col-md-3">
-                            <label className="form-label fw-semibold">Department *</label>
-                            <select className="form-select" value={departmentCode} onChange={handleDepartmentChange}>
+                            <label className="form-label fw-semibold small mb-1">Department *</label>
+                            <select className="form-select form-select-sm" value={departmentCode} onChange={handleDepartmentChange}>
                                 <option value="">Select Department</option>
                                 {departments.map((dept) => (
                                     <option key={dept.code} value={dept.code}>
@@ -472,10 +506,10 @@ function FacultyCurriculum() {
                                 ))}
                             </select>
                         </div>
-                        <div className="col-12 col-md-3">
-                            <label className="form-label fw-semibold">Degree Programme *</label>
+                        <div className="col-12 col-md-2">
+                            <label className="form-label fw-semibold small mb-1">Degree Programme *</label>
                             <select
-                                className="form-select"
+                                className="form-select form-select-sm"
                                 value={programCode}
                                 onChange={handleProgramChange}
                                 disabled={!departmentCode || !regulationCode}
@@ -484,8 +518,8 @@ function FacultyCurriculum() {
                                     {!departmentCode || !regulationCode
                                         ? "Select Regulation & Dept First"
                                         : availablePrograms.length === 0
-                                            ? "No matching programmes"
-                                            : "Select Degree Programme"}
+                                        ? "No matching programmes"
+                                        : "Select Degree Programme"}
                                 </option>
                                 {availablePrograms.map((prog) => (
                                     <option key={prog.code} value={prog.code}>
@@ -495,8 +529,8 @@ function FacultyCurriculum() {
                             </select>
                         </div>
                         <div className="col-12 col-md-2">
-                            <label className="form-label fw-semibold">Semester *</label>
-                            <select className="form-select" value={semester} onChange={handleSemesterChange} disabled={!programCode}>
+                            <label className="form-label fw-semibold small mb-1">Semester *</label>
+                            <select className="form-select form-select-sm" value={semester} onChange={handleSemesterChange} disabled={!programCode}>
                                 <option value="">Select Semester</option>
                                 {semesterOptions.map((item) => (
                                     <option key={item.value} value={item.value}>
@@ -505,15 +539,35 @@ function FacultyCurriculum() {
                                 ))}
                             </select>
                         </div>
-                        <div className="col-12 col-md-1">
+                        <div className="col-12 col-md-2 d-flex gap-1">
                             <button
                                 type="button"
-                                className="btn btn-primary w-100"
+                                className={`btn btn-sm btn-primary ${semester === "ALL" ? "w-50" : "w-100"}`}
                                 onClick={handleLoadCurriculum}
                                 disabled={curriculumLoading || !programCode || !semester}
+                                title="Search Curriculum"
                             >
-                                {curriculumLoading ? <span className="spinner-border spinner-border-sm"></span> : <i className="bi bi-search"></i>}
+                                {curriculumLoading ? <span className="spinner-border spinner-border-sm"></span> : <><i className="bi bi-search me-1"></i>Search</>}
                             </button>
+
+                            {semester === "ALL" && (
+                                <button
+                                    type="button"
+                                    className="btn btn-sm btn-success w-50 text-nowrap d-flex align-items-center justify-content-center gap-1 shadow-sm"
+                                    disabled={downloadingBook || curriculumLoading || curricula.length === 0}
+                                    onClick={handleDownloadFullBook}
+                                    title="Download Complete Course Structure & Syllabus Book"
+                                >
+                                    {downloadingBook ? (
+                                        <span className="spinner-border spinner-border-sm"></span>
+                                    ) : (
+                                        <>
+                                            <i className="bi bi-file-earmark-pdf-fill"></i>
+                                            <span>Book</span>
+                                        </>
+                                    )}
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -537,29 +591,29 @@ function FacultyCurriculum() {
                         const track2Credits = track2Items.reduce((s, x) => s + getCredit(x.data), 0);
 
                         return (
-                            <div key={curriculum.semester} className="card border-0 shadow-sm mb-5">
-                                <div className="card-header bg-primary text-white py-2">
+                            <div key={curriculum.semester} className="card border-0 shadow-sm mb-4">
+                                <div className="card-header bg-primary text-white py-2 px-3">
                                     <div className="d-flex justify-content-between align-items-center">
-                                        <h5 className="fw-bold mb-0">{getSemesterTitle(curriculum.semester)}</h5>
-                                        <small className="opacity-75">{regulationCode} - {departmentCode} ({selectedProgram?.name || programCode})</small>
+                                        <h6 className="fw-bold mb-0">{getSemesterTitle(curriculum.semester)}</h6>
+                                        <small className="opacity-75">{programHeader}</small>
                                     </div>
                                 </div>
 
-                                <div className="table-responsive">
-                                    <table className="table table-bordered align-middle mb-0 text-center">
+                                <div className="table-responsive" style={{ overflowX: "hidden" }}>
+                                    <table className="table table-sm table-bordered align-middle mb-0 text-center" style={{ width: "100%", fontSize: "0.85rem" }}>
                                         <thead className="table-primary text-dark fw-semibold">
                                             <tr>
-                                                <th style={{ width: "65px" }} rowSpan="2">S.No.</th>
-                                                <th style={{ minWidth: "150px" }} rowSpan="2">Course Code</th>
-                                                <th style={{ minWidth: "350px" }} rowSpan="2" className="text-start ps-3">Course</th>
-                                                <th colSpan="4">Hours / Week</th>
-                                                <th style={{ minWidth: "180px" }} rowSpan="2">Syllabus</th>
+                                                <th style={{ width: "45px" }} rowSpan="2" className="py-1">S.No.</th>
+                                                <th style={{ width: "130px" }} rowSpan="2" className="py-1">Course Code</th>
+                                                <th rowSpan="2" className="text-start ps-2 py-1">Course</th>
+                                                <th colSpan="4" className="py-0.5">Hours / Week</th>
+                                                <th style={{ width: "150px" }} rowSpan="2" className="py-1">Syllabus</th>
                                             </tr>
                                             <tr>
-                                                <th style={{ width: "60px" }}>L</th>
-                                                <th style={{ width: "60px" }}>R</th>
-                                                <th style={{ width: "60px" }}>P</th>
-                                                <th style={{ width: "60px" }}>C</th>
+                                                <th style={{ width: "38px" }} className="py-0.5">L</th>
+                                                <th style={{ width: "38px" }} className="py-0.5">R</th>
+                                                <th style={{ width: "38px" }} className="py-0.5">P</th>
+                                                <th style={{ width: "42px" }} className="py-0.5">C</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -569,15 +623,15 @@ function FacultyCurriculum() {
                                                 if (entry.type === "course") {
                                                     const course = entry.data;
                                                     return (
-                                                        <tr key={`t1-course-${course.id}`}>
-                                                            <td>{serial}</td>
-                                                            <td className="fw-semibold text-nowrap">{course.courseCode || ""}</td>
-                                                            <td className="text-start ps-3 fw-semibold">{course.courseName}</td>
-                                                            <td>{formatNumber(course.lecture)}</td>
-                                                            <td>{formatNumber(course.tutorial)}</td>
-                                                            <td>{formatNumber(course.practical)}</td>
-                                                            <td className="fw-semibold">{formatNumber(getCredit(course))}</td>
-                                                            <td>{renderSyllabusActions(course, "course")}</td>
+                                                        <tr key={`t1-course-${course.id}`} style={{ height: "42px" }}>
+                                                            <td className="py-1">{serial}</td>
+                                                            <td className="fw-semibold text-truncate py-1" title={course.courseCode}>{course.courseCode || ""}</td>
+                                                            <td className="text-start ps-2 fw-semibold text-truncate py-1" title={course.courseName}>{course.courseName}</td>
+                                                            <td className="py-1">{formatNumber(course.lecture)}</td>
+                                                            <td className="py-1">{formatNumber(course.tutorial)}</td>
+                                                            <td className="py-1">{formatNumber(course.practical)}</td>
+                                                            <td className="fw-semibold py-1">{formatNumber(getCredit(course))}</td>
+                                                            <td className="py-1">{renderSyllabusActions(course, "course")}</td>
                                                         </tr>
                                                     );
                                                 }
@@ -588,28 +642,28 @@ function FacultyCurriculum() {
 
                                                 return (
                                                     <React.Fragment key={`t1-group-${group.id}`}>
-                                                        <tr>
-                                                            <td>{serial}</td>
-                                                            <td>-</td>
-                                                            <td className="text-start ps-3">
+                                                        <tr style={{ height: "42px" }}>
+                                                            <td className="py-1">{serial}</td>
+                                                            <td className="py-1">-</td>
+                                                            <td className="text-start ps-2 py-1">
                                                                 <div
                                                                     className="d-flex align-items-center justify-content-between text-primary fw-semibold"
                                                                     style={{ cursor: "pointer" }}
                                                                     onClick={() => handleToggleElectiveGroup(group)}
                                                                 >
-                                                                    <span>{group.name}</span>
-                                                                    <span className="badge bg-primary-subtle text-primary small ms-2">
+                                                                    <span className="text-truncate" title={group.name}>{group.name}</span>
+                                                                    <span className="badge bg-primary-subtle text-primary small ms-1 text-nowrap" style={{ fontSize: "0.72rem" }}>
                                                                         <i className={`bi bi-chevron-${isExpanded ? "up" : "down"} me-1`}></i>
                                                                         {isExpanded ? "Hide" : "View"}
                                                                     </span>
                                                                 </div>
                                                             </td>
-                                                            <td>{formatNumber(group.lecture)}</td>
-                                                            <td>{formatNumber(group.tutorial)}</td>
-                                                            <td>{formatNumber(group.practical)}</td>
-                                                            <td className="fw-semibold">{formatNumber(getCredit(group))}</td>
-                                                            <td>
-                                                                <span className="badge bg-secondary-subtle text-secondary">
+                                                            <td className="py-1">{formatNumber(group.lecture)}</td>
+                                                            <td className="py-1">{formatNumber(group.tutorial)}</td>
+                                                            <td className="py-1">{formatNumber(group.practical)}</td>
+                                                            <td className="fw-semibold py-1">{formatNumber(getCredit(group))}</td>
+                                                            <td className="py-1">
+                                                                <span className="badge bg-secondary-subtle text-secondary text-nowrap" style={{ fontSize: "0.75rem", padding: "3px 6px" }}>
                                                                     Elective Slot
                                                                 </span>
                                                             </td>
@@ -618,11 +672,11 @@ function FacultyCurriculum() {
                                                         {/* EXPANDED SUBJECTS */}
                                                         {isExpanded && (
                                                             <tr className="bg-light">
-                                                                <td colSpan="8" className="p-3">
-                                                                    <div className="border rounded bg-white p-3 shadow-sm text-start">
-                                                                        <div className="d-flex justify-content-between align-items-center mb-3">
-                                                                            <h6 className="fw-bold mb-0 text-primary">
-                                                                                <i className="bi bi-list-ul me-2"></i>
+                                                                <td colSpan="8" className="p-2">
+                                                                    <div className="border rounded bg-white p-2 shadow-sm text-start">
+                                                                        <div className="d-flex justify-content-between align-items-center mb-2">
+                                                                            <h6 className="fw-bold mb-0 text-primary small">
+                                                                                <i className="bi bi-list-ul me-1"></i>
                                                                                 Subjects in {group.name}
                                                                             </h6>
                                                                             {subjectsLoading[group.id] && (
@@ -632,45 +686,43 @@ function FacultyCurriculum() {
                                                                         {subjectsLoading[group.id] ? (
                                                                             <div className="text-muted small">Loading subjects...</div>
                                                                         ) : groupSubjects.length === 0 ? (
-                                                                            <div className="alert alert-warning mb-0 small">No subjects available in this group.</div>
+                                                                            <div className="alert alert-warning mb-0 small py-1">No subjects available in this group.</div>
                                                                         ) : (
-                                                                            <div className="table-responsive">
-                                                                                <table className="table table-sm table-bordered align-middle mb-0 text-center">
-                                                                                    <thead className="table-secondary">
-                                                                                        <tr>
-                                                                                            <th style={{ width: "50px" }}>#</th>
-                                                                                            <th style={{ minWidth: "130px" }}>Subject Code</th>
-                                                                                            <th style={{ minWidth: "260px" }} className="text-start ps-2">Subject Name</th>
-                                                                                            <th style={{ width: "50px" }}>L</th>
-                                                                                            <th style={{ width: "50px" }}>R</th>
-                                                                                            <th style={{ width: "50px" }}>P</th>
-                                                                                            <th style={{ width: "50px" }}>C</th>
-                                                                                            <th style={{ minWidth: "170px" }}>Syllabus</th>
+                                                                            <table className="table table-sm table-bordered align-middle mb-0 text-center" style={{ width: "100%", fontSize: "0.82rem" }}>
+                                                                                <thead className="table-secondary">
+                                                                                    <tr>
+                                                                                        <th style={{ width: "45px" }} className="py-0.5">#</th>
+                                                                                        <th style={{ width: "130px" }} className="py-0.5">Subject Code</th>
+                                                                                        <th className="text-start ps-2 py-0.5">Subject Name</th>
+                                                                                        <th style={{ width: "38px" }} className="py-0.5">L</th>
+                                                                                        <th style={{ width: "38px" }} className="py-0.5">R</th>
+                                                                                        <th style={{ width: "38px" }} className="py-0.5">P</th>
+                                                                                        <th style={{ width: "42px" }} className="py-0.5">C</th>
+                                                                                        <th style={{ width: "150px" }} className="py-0.5">Syllabus</th>
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody>
+                                                                                    {groupSubjects.map((sub, sIdx) => (
+                                                                                        <tr key={`group-${group.id}-sub-${sub.id}`}>
+                                                                                            <td className="py-1">{sIdx + 1}</td>
+                                                                                            <td className="fw-semibold text-truncate py-1" title={sub.courseCode}>{sub.courseCode || ""}</td>
+                                                                                            <td className="text-start ps-2 text-truncate py-1" title={sub.courseName}>
+                                                                                                <span>{sub.courseName}</span>
+                                                                                                {sub.offeringDepartment && (
+                                                                                                    <span className="badge bg-info-subtle text-info-emphasis border border-info-subtle ms-1 py-0 px-1" style={{ fontSize: "0.7rem" }}>
+                                                                                                        {sub.offeringDepartment}
+                                                                                                    </span>
+                                                                                                )}
+                                                                                            </td>
+                                                                                            <td className="py-1">{formatNumber(sub.lecture)}</td>
+                                                                                            <td className="py-1">{formatNumber(sub.tutorial)}</td>
+                                                                                            <td className="py-1">{formatNumber(sub.practical)}</td>
+                                                                                            <td className="fw-semibold py-1">{formatNumber(getCredit(sub))}</td>
+                                                                                            <td className="py-1">{renderSyllabusActions(sub, "elective")}</td>
                                                                                         </tr>
-                                                                                    </thead>
-                                                                                    <tbody>
-                                                                                        {groupSubjects.map((sub, sIdx) => (
-                                                                                            <tr key={`group-${group.id}-sub-${sub.id}`}>
-                                                                                                <td>{sIdx + 1}</td>
-                                                                                                <td className="fw-semibold text-nowrap">{sub.courseCode || ""}</td>
-                                                                                                <td className="text-start ps-2">
-                                                                                                    <span>{sub.courseName}</span>
-                                                                                                    {sub.offeringDepartment && (
-                                                                                                        <span className="badge bg-info-subtle text-info-emphasis border border-info-subtle ms-2 py-0 px-1 small">
-                                                                                                            {sub.offeringDepartment}
-                                                                                                        </span>
-                                                                                                    )}
-                                                                                                </td>
-                                                                                                <td>{formatNumber(sub.lecture)}</td>
-                                                                                                <td>{formatNumber(sub.tutorial)}</td>
-                                                                                                <td>{formatNumber(sub.practical)}</td>
-                                                                                                <td className="fw-semibold">{formatNumber(getCredit(sub))}</td>
-                                                                                                <td>{renderSyllabusActions(sub, "elective")}</td>
-                                                                                            </tr>
-                                                                                        ))}
-                                                                                    </tbody>
-                                                                                </table>
-                                                                            </div>
+                                                                                    ))}
+                                                                                </tbody>
+                                                                            </table>
                                                                         )}
                                                                     </div>
                                                                 </td>
@@ -682,19 +734,19 @@ function FacultyCurriculum() {
 
                                             {/* TRACK 1 TOTAL */}
                                             <tr className="table-light fw-bold">
-                                                <td colSpan="3" className="text-end pe-3">Total</td>
-                                                <td>{formatNumber(track1Lecture)}</td>
-                                                <td>{formatNumber(track1Tutorial)}</td>
-                                                <td>{formatNumber(track1Practical)}</td>
-                                                <td className="fw-bold">{formatNumber(track1Credits)}</td>
-                                                <td></td>
+                                                <td colSpan="3" className="text-end pe-2 py-1">Total</td>
+                                                <td className="py-1">{formatNumber(track1Lecture)}</td>
+                                                <td className="py-1">{formatNumber(track1Tutorial)}</td>
+                                                <td className="py-1">{formatNumber(track1Practical)}</td>
+                                                <td className="fw-bold py-1">{formatNumber(track1Credits)}</td>
+                                                <td className="py-1"></td>
                                             </tr>
 
                                             {/* ALTERNATIVE TRACK ("Or") */}
                                             {hasAltTrack && (
                                                 <>
                                                     <tr className="table-secondary text-center fw-bold">
-                                                        <td colSpan="8" className="py-2 fs-6 text-uppercase">
+                                                        <td colSpan="8" className="py-1 fs-6 text-uppercase">
                                                             Or
                                                         </td>
                                                     </tr>
@@ -702,26 +754,26 @@ function FacultyCurriculum() {
                                                     {track2Items.map((entry, idx) => {
                                                         const course = entry.data;
                                                         return (
-                                                            <tr key={`t2-course-${course.id}`}>
-                                                                <td>{idx + 1}</td>
-                                                                <td className="fw-semibold text-nowrap">{course.courseCode}</td>
-                                                                <td className="text-start ps-3 fw-semibold">{course.courseName}</td>
-                                                                <td>{formatNumber(course.lecture)}</td>
-                                                                <td>{formatNumber(course.tutorial)}</td>
-                                                                <td>{formatNumber(course.practical)}</td>
-                                                                <td className="fw-semibold">{formatNumber(getCredit(course))}</td>
-                                                                <td>{renderSyllabusActions(course, "course")}</td>
+                                                            <tr key={`t2-course-${course.id}`} style={{ height: "42px" }}>
+                                                                <td className="py-1">{idx + 1}</td>
+                                                                <td className="fw-semibold text-truncate py-1" title={course.courseCode}>{course.courseCode}</td>
+                                                                <td className="text-start ps-2 fw-semibold text-truncate py-1" title={course.courseName}>{course.courseName}</td>
+                                                                <td className="py-1">{formatNumber(course.lecture)}</td>
+                                                                <td className="py-1">{formatNumber(course.tutorial)}</td>
+                                                                <td className="py-1">{formatNumber(course.practical)}</td>
+                                                                <td className="fw-semibold py-1">{formatNumber(getCredit(course))}</td>
+                                                                <td className="py-1">{renderSyllabusActions(course, "course")}</td>
                                                             </tr>
                                                         );
                                                     })}
 
                                                     <tr className="table-light fw-bold">
-                                                        <td colSpan="3" className="text-end pe-3">Total</td>
-                                                        <td>{formatNumber(track2Lecture)}</td>
-                                                        <td>{formatNumber(track2Tutorial)}</td>
-                                                        <td>{formatNumber(track2Practical)}</td>
-                                                        <td className="fw-bold">{formatNumber(track2Credits)}</td>
-                                                        <td></td>
+                                                        <td colSpan="3" className="text-end pe-2 py-1">Total</td>
+                                                        <td className="py-1">{formatNumber(track2Lecture)}</td>
+                                                        <td className="py-1">{formatNumber(track2Tutorial)}</td>
+                                                        <td className="py-1">{formatNumber(track2Practical)}</td>
+                                                        <td className="fw-bold py-1">{formatNumber(track2Credits)}</td>
+                                                        <td className="py-1"></td>
                                                     </tr>
                                                 </>
                                             )}
@@ -740,7 +792,8 @@ function FacultyCurriculum() {
                     item={textModal.item}
                     type={textModal.type}
                     readOnly={textModal.readOnly}
-                    isAdmin={true} 
+                    isAdmin={false} // Strictly false for HOD and Dean
+                    isFaculty={false}
                     programHeader={programHeader}
                     onClose={() => setTextModal({ open: false, item: null, type: "course", readOnly: false })}
                     onSuccess={() => handleLoadCurriculum()}
