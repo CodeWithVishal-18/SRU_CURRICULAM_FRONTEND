@@ -151,7 +151,6 @@ function Curriculum() {
             electiveGroups: data?.electiveGroups || data?.electives || [],
         };
     };
-
     const attachCourseSyllabusStatus = async (courses = []) => {
         return Promise.all(
             courses.map(async (course) => {
