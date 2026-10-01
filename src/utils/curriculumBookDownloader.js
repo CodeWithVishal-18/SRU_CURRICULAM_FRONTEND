@@ -8,6 +8,7 @@ export async function downloadCompleteCurriculumBook({
     curricula = [],
     subjectsMap = {},
 }) {
+    // 1. Gather all course and elective IDs that have syllabi
     const coursesToFetch = [];
     curricula.forEach((sem) => {
         (sem.courses || []).forEach((c) => {
@@ -56,22 +57,24 @@ export async function downloadCompleteCurriculumBook({
         return l + 0.5 * t + 0.5 * p;
     };
 
-    const getStatusText = (status) => {
-        const s = String(status || "").toUpperCase();
-        if (s === "APPROVED") return "Approved";
-        if (s === "UPLOADED") return "Uploaded";
-        if (s === "DRAFT") return "Draft";
-        if (s === "REJECTED") return "Rejected";
-        return "Not Uploaded";
-    };
+    const progTitle = programName ? `(${programName})` : `(${programCode})`;
+    const fullProgramHeader = `${progTitle}`.trim();
 
-    const getStatusColor = (status) => {
-        const s = String(status || "").toUpperCase();
-        if (s === "APPROVED") return "#198754";
-        if (s === "UPLOADED") return "#0d6efd";
-        if (s === "DRAFT") return "#d97706";
-        if (s === "REJECTED") return "#dc3545";
-        return "#6c757d";
+    // Normalizes group names: e.g. "Open Elective 1" & "Open Elective 2" -> "Open Electives"
+    const normalizeGroupTitle = (name = "", electiveType = "") => {
+        let clean = name
+            .replace(/[\s\-_–—]+(I{1,3}|IV|V|VI|VII|VIII|\d+)\b/gi, "")
+            .replace(/\s*\([^\)]*\)/g, "")
+            .trim();
+
+        if (!clean && electiveType) {
+            clean = electiveType.replace(/_/g, " ").trim();
+        }
+
+        if (clean.toLowerCase().endsWith("elective")) {
+            clean += "s";
+        }
+        return clean || name || "Electives";
     };
 
     // Separates main courses from alternative ("OR") courses without merging
@@ -106,12 +109,55 @@ export async function downloadCompleteCurriculumBook({
         };
     };
 
-    // 3. Build HTML Output
+    // Consolidate Electives into unique pools and deduplicate by courseCode
+    const consolidatedElectivePools = {};
+    curricula.forEach((sem) => {
+        (sem.electiveGroups || []).forEach((grp) => {
+            const poolName = normalizeGroupTitle(grp.name, grp.electiveType);
+            if (!consolidatedElectivePools[poolName]) {
+                consolidatedElectivePools[poolName] = {
+                    title: poolName,
+                    electiveType: grp.electiveType || "Elective",
+                    subjectsByCode: new Map(),
+                };
+            }
+
+            const subs = subjectsMap[grp.id] || [];
+            subs.forEach((sub) => {
+                const code = String(sub.courseCode || "").trim().toUpperCase();
+                // Ensure all subjects (including EEE in EEE curriculum) are added
+                if (code && !consolidatedElectivePools[poolName].subjectsByCode.has(code)) {
+                    consolidatedElectivePools[poolName].subjectsByCode.set(code, sub);
+                }
+            });
+        });
+    });
+
+    // Flexible Courses definition
+    const flexibleCourses = [
+        { code: "25HUM202CR401", title: "Industry Certification", l: 2, r: 0, p: 2, c: 3 },
+        { code: "25HUM300CR402", title: "Professional Skill Development", l: 3, r: 0, p: 0, c: 3 },
+        { code: "25HUM300CR403", title: "Self-Paced Learning", l: 3, r: 0, p: 0, c: 3 }
+    ];
+
+    const specialCasesNotes = [
+        "In Special Cases Open Electives may be considered as Program Electives",
+        "In Special Cases Program Electives may be considered as Open Electives",
+        "In Special Cases Program Electives may be considered as Specialization Electives",
+        "In Special Cases Specialization Electives may be considered as Program Electives",
+        "In Special Cases Specialization Electives may be considered as Open Electives",
+        "In Special Cases Open Electives may be considered as Specialization Electives",
+        "In Special Cases Open Electives may be considered as LHS Electives",
+        "In Special Cases LHS Electives may be considered as Open Electives"
+    ];
+
     const printWindow = window.open("", "_blank", "width=1000,height=900");
     if (!printWindow) {
         alert("Please allow popups to download the complete Curriculum Book");
         return;
     }
+
+    const printedSyllabusCodes = new Set();
 
     const html = `
     <!DOCTYPE html>
@@ -131,18 +177,17 @@ export async function downloadCompleteCurriculumBook({
                 margin: 0;
                 padding: 0;
             }
-            /* Explicit page break ONLY for Syllabi sections */
-            // .syllabus-page-break {
-            //     page-break-before: always;
-            // }
+            .syllabus-page-break {
+                page-break-before: always;
+            }
             .cover-page {
                 text-align: center;
-                padding: 70px 20px 40px 20px;
+                padding: 60px 20px 30px 20px;
                 border-bottom: 2px solid #0d6efd;
-                margin-bottom: 25px;
+                margin-bottom: 20px;
             }
             .cover-title {
-                font-size: 22pt;
+                font-size: 20pt;
                 font-weight: 800;
                 color: #0d6efd;
                 margin-bottom: 6px;
@@ -150,20 +195,20 @@ export async function downloadCompleteCurriculumBook({
                 letter-spacing: 0.5px;
             }
             .cover-subtitle {
-                font-size: 14pt;
+                font-size: 13pt;
                 font-weight: 600;
                 color: #1e293b;
-                margin-bottom: 15px;
+                margin-bottom: 12px;
             }
             .cover-meta {
-                font-size: 10pt;
-                color: #475569;
+                font-size: 14pt;
+                color: #1e293b;
                 display: flex;
                 justify-content: center;
                 gap: 25px;
             }
             .semester-block {
-                margin-bottom: 22px;
+                margin-bottom: 20px;
                 page-break-inside: avoid;
             }
             .section-header {
@@ -196,7 +241,7 @@ export async function downloadCompleteCurriculumBook({
             }
             table.curriculum-table th, table.curriculum-table td {
                 border: 1px solid #333;
-                padding: 4px 6px;
+                padding: 5px 6px;
                 text-align: center;
             }
             table.curriculum-table th {
@@ -212,14 +257,6 @@ export async function downloadCompleteCurriculumBook({
                 border: 1px solid #333;
                 padding: 4px 8px;
                 font-size: 9pt;
-            }
-            .badge-status {
-                font-weight: 700;
-                font-size: 7.5pt;
-                padding: 2px 5px;
-                border-radius: 3px;
-                color: white;
-                display: inline-block;
             }
             .syllabus-box {
                 border: 1px solid #cbd5e1;
@@ -252,54 +289,52 @@ export async function downloadCompleteCurriculumBook({
     <body>
         <!-- PROGRAM TITLE HEADER -->
         <div class="cover-page">
-            <div style="font-size: 13pt; font-weight: bold; color: #64748b; margin-bottom: 4px;">SR UNIVERSITY</div>
+            <div style="font-size: 12pt; font-weight: bold; color: #64748b; margin-bottom: 4px;">SR UNIVERSITY, WARANGAL</div>
             <div class="cover-title">Curriculum & Course Structure</div>
-            <div class="cover-subtitle">${programName || programCode}</div>
             <div class="cover-meta">
                 <div><strong>Regulation:</strong> ${regulationCode}</div>
                 <div><strong>Department:</strong> ${departmentCode}</div>
-                <div><strong>Academic Level:</strong> ${programName?.includes("M.") ? "PG" : "UG"}</div>
+                <div><strong>Degree Programme:</strong> ${programName || programCode}</div>
             </div>
         </div>
 
-        <!-- 1. CONTINUOUS SEMESTER-WISE TABLES (NO FORCED PAGE BREAK BETWEEN SEMESTERS) -->
+        <!-- 1. SEMESTER-WISE TABLES (CONTINUOUS, STATUS REMOVED) -->
         ${curricula.map((sem) => {
-        const { hasAltTrack, track1Courses, track1Electives, track2Courses } = getSemesterTracks(sem);
-        if (track1Courses.length === 0 && track1Electives.length === 0 && track2Courses.length === 0) return "";
+            const { hasAltTrack, track1Courses, track1Electives, track2Courses } = getSemesterTracks(sem);
+            if (track1Courses.length === 0 && track1Electives.length === 0 && track2Courses.length === 0) return "";
 
-        let t1L = 0, t1R = 0, t1P = 0, t1C = 0;
-        let t2L = 0, t2R = 0, t2P = 0, t2C = 0;
+            let t1L = 0, t1R = 0, t1P = 0, t1C = 0;
+            let t2L = 0, t2R = 0, t2P = 0, t2C = 0;
 
-        return `
+            return `
             <div class="semester-block">
                 <div class="section-header">
-                    Semester ${sem.semester} Course Structure - ${regulationCode} (${departmentCode})
+                    Semester ${sem.semester} Course Structure -${fullProgramHeader}
                 </div>
                 <table class="curriculum-table">
                     <thead>
                         <tr>
-                            <th rowspan="2" style="width: 35px;">S.No</th>
-                            <th rowspan="2" style="width: 115px;">Course Code</th>
+                            <th rowspan="2" style="width: 40px;">S.No</th>
+                            <th rowspan="2" style="width: 140px;">Course Code</th>
                             <th rowspan="2" style="text-align: left; padding-left: 8px;">Course Title</th>
                             <th colspan="4">Hours / Week</th>
-                            <th rowspan="2" style="width: 90px;">Syllabus Status</th>
                         </tr>
                         <tr>
-                            <th style="width: 32px;">L</th>
-                            <th style="width: 32px;">R</th>
-                            <th style="width: 32px;">P</th>
-                            <th style="width: 36px;">C</th>
+                            <th style="width: 45px;">L</th>
+                            <th style="width: 45px;">R</th>
+                            <th style="width: 45px;">P</th>
+                            <th style="width: 50px;">C</th>
                         </tr>
                     </thead>
                     <tbody>
                         <!-- TRACK 1: MAIN COURSES -->
                         ${track1Courses.map((c, idx) => {
-            t1L += Number(c.lecture) || 0;
-            t1R += Number(c.tutorial) || 0;
-            t1P += Number(c.practical) || 0;
-            t1C += getCredit(c);
+                            t1L += Number(c.lecture) || 0;
+                            t1R += Number(c.tutorial) || 0;
+                            t1P += Number(c.practical) || 0;
+                            t1C += getCredit(c);
 
-            return `
+                            return `
                             <tr>
                                 <td>${idx + 1}</td>
                                 <td style="font-weight: 600;">${c.courseCode || "-"}</td>
@@ -308,23 +343,18 @@ export async function downloadCompleteCurriculumBook({
                                 <td>${formatNum(c.tutorial)}</td>
                                 <td>${formatNum(c.practical)}</td>
                                 <td style="font-weight: bold;">${formatNum(getCredit(c))}</td>
-                                <td>
-                                    <span class="badge-status" style="background-color: ${getStatusColor(c.syllabusStatus)};">
-                                        ${getStatusText(c.syllabusStatus)}
-                                    </span>
-                                </td>
                             </tr>
                             `;
-        }).join("")}
+                        }).join("")}
 
                         <!-- TRACK 1: ELECTIVE SLOTS -->
                         ${track1Electives.map((g, gIdx) => {
-            t1L += Number(g.lecture) || 0;
-            t1R += Number(g.tutorial) || 0;
-            t1P += Number(g.practical) || 0;
-            t1C += getCredit(g);
+                            t1L += Number(g.lecture) || 0;
+                            t1R += Number(g.tutorial) || 0;
+                            t1P += Number(g.practical) || 0;
+                            t1C += getCredit(g);
 
-            return `
+                            return `
                             <tr style="background-color: #f8fafc;">
                                 <td>${track1Courses.length + gIdx + 1}</td>
                                 <td>-</td>
@@ -335,33 +365,31 @@ export async function downloadCompleteCurriculumBook({
                                 <td>${formatNum(g.tutorial)}</td>
                                 <td>${formatNum(g.practical)}</td>
                                 <td style="font-weight: bold;">${formatNum(getCredit(g))}</td>
-                                <td><span style="font-size: 7.5pt; color: #64748b;">Elective</span></td>
                             </tr>
                             `;
-        }).join("")}
+                        }).join("")}
 
                         <!-- TRACK 1 TOTAL -->
                         <tr style="background: #f1f5f9; font-weight: bold;">
-                            <td colspan="3" style="text-align: right; padding-right: 10px;">${hasAltTrack ? "Total (Option 1)" : "Total"}</td>
+                            <td colspan="3" style="text-align: right; padding-right: 12px;">${hasAltTrack ? "Total (Option 1)" : "Total"}</td>
                             <td>${formatNum(t1L)}</td>
                             <td>${formatNum(t1R)}</td>
                             <td>${formatNum(t1P)}</td>
                             <td>${formatNum(t1C)}</td>
-                            <td></td>
                         </tr>
 
-                        <!-- SEPARATE ALTERNATIVE TRACK ("OR") WITHOUT MERGING -->
+                        <!-- ALTERNATIVE TRACK ("OR") -->
                         ${hasAltTrack ? `
                             <tr>
-                                <td colspan="8" class="or-divider">--- OR ---</td>
+                                <td colspan="7" class="or-divider">--- OR ---</td>
                             </tr>
                             ${track2Courses.map((c, idx) => {
-            t2L += Number(c.lecture) || 0;
-            t2R += Number(c.tutorial) || 0;
-            t2P += Number(c.practical) || 0;
-            t2C += getCredit(c);
+                                t2L += Number(c.lecture) || 0;
+                                t2R += Number(c.tutorial) || 0;
+                                t2P += Number(c.practical) || 0;
+                                t2C += getCredit(c);
 
-            return `
+                                return `
                                 <tr style="background-color: #fffdf5;">
                                     <td>${idx + 1}</td>
                                     <td style="font-weight: 600;">${c.courseCode || "-"}</td>
@@ -370,105 +398,135 @@ export async function downloadCompleteCurriculumBook({
                                     <td>${formatNum(c.tutorial)}</td>
                                     <td>${formatNum(c.practical)}</td>
                                     <td style="font-weight: bold;">${formatNum(getCredit(c))}</td>
-                                    <td>
-                                        <span class="badge-status" style="background-color: ${getStatusColor(c.syllabusStatus)};">
-                                            ${getStatusText(c.syllabusStatus)}
-                                        </span>
-                                    </td>
                                 </tr>
                                 `;
-        }).join("")}
+                            }).join("")}
 
                             <tr style="background: #f1f5f9; font-weight: bold;">
-                                <td colspan="3" style="text-align: right; padding-right: 10px;">Total (Option 2)</td>
+                                <td colspan="3" style="text-align: right; padding-right: 12px;">Total (Option 2)</td>
                                 <td>${formatNum(t2L)}</td>
                                 <td>${formatNum(t2R)}</td>
                                 <td>${formatNum(t2P)}</td>
                                 <td>${formatNum(t2C)}</td>
-                                <td></td>
                             </tr>
                         ` : ""}
                     </tbody>
                 </table>
             </div>
             `;
-    }).join("")}
+        }).join("")}
 
-        <!-- 2. ELECTIVES INDEX & POOLS DETAIL TABLE -->
+        <!-- 2. CONSOLIDATED ELECTIVES (NO SEMESTER IN HEADING, CONSOLIDATED BY POOL) -->
         <div class="semester-block" style="margin-top: 25px;">
-            <div class="section-header">Elective Groups & Buckets (All Semesters)</div>
-            ${curricula.map((sem) => {
-        const groups = sem.electiveGroups || [];
-        if (groups.length === 0) return "";
-
-        return groups.map((grp) => {
-            const subs = subjectsMap[grp.id] || [];
-            return `
-                    <div style="margin-bottom: 16px;">
-                        <div style="font-weight: bold; font-size: 9.5pt; color: #1e293b; margin-bottom: 4px;">
-                            Semester ${sem.semester}: ${grp.name} (${grp.electiveType || "Elective"})
-                        </div>
-                        <table class="curriculum-table">
-                            <thead>
-                                <tr>
-                                    <th style="width: 35px;">#</th>
-                                    <th style="width: 115px;">Subject Code</th>
-                                    <th style="text-align: left; padding-left: 8px;">Subject Title</th>
-                                    <th style="width: 45px;">Dept</th>
-                                    <th style="width: 32px;">L</th>
-                                    <th style="width: 32px;">R</th>
-                                    <th style="width: 32px;">P</th>
-                                    <th style="width: 36px;">C</th>
-                                    <th style="width: 90px;">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${subs.length === 0 ? `<tr><td colspan="9" style="color: #94a3b8;">No subjects in this group</td></tr>` :
-                    subs.map((s, idx) => `
-                                <tr>
-                                    <td>${idx + 1}</td>
-                                    <td style="font-weight: bold;">${s.courseCode || "-"}</td>
-                                    <td style="text-align: left; padding-left: 8px;">${s.courseName}</td>
-                                    <td>${s.offeringDepartment || "-"}</td>
-                                    <td>${formatNum(s.lecture)}</td>
-                                    <td>${formatNum(s.tutorial)}</td>
-                                    <td>${formatNum(s.practical)}</td>
-                                    <td style="font-weight: bold;">${formatNum(getCredit(s))}</td>
-                                    <td>
-                                        <span class="badge-status" style="background-color: ${getStatusColor(s.syllabusStatus)};">
-                                            ${getStatusText(s.syllabusStatus)}
-                                        </span>
-                                    </td>
-                                </tr>
-                                `).join("")}
-                            </tbody>
-                        </table>
+            <div class="section-header">Elective Groups & Buckets - ${fullProgramHeader}</div>
+            ${Object.values(consolidatedElectivePools).map((pool) => {
+                const uniqueSubs = Array.from(pool.subjectsByCode.values());
+                return `
+                <div style="margin-bottom: 18px;">
+                    <div style="font-weight: bold; font-size: 10pt; color: #1e293b; margin-bottom: 5px;">
+                        ${pool.title}
                     </div>
-                    `;
-        }).join("");
-    }).join("")}
+                    <table class="curriculum-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;">#</th>
+                                <th style="width: 140px;">Subject Code</th>
+                                <th style="text-align: left; padding-left: 8px;">Subject Title</th>
+                                <th style="width: 60px;">Dept</th>
+                                <th style="width: 45px;">L</th>
+                                <th style="width: 45px;">R</th>
+                                <th style="width: 45px;">P</th>
+                                <th style="width: 50px;">C</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${uniqueSubs.length === 0 ? `<tr><td colspan="8" style="color: #94a3b8;">No subjects in this group</td></tr>` : 
+                            uniqueSubs.map((s, idx) => `
+                            <tr>
+                                <td>${idx + 1}</td>
+                                <td style="font-weight: bold;">${s.courseCode || "-"}</td>
+                                <td style="text-align: left; padding-left: 8px;">${s.courseName}</td>
+                                <td>${s.offeringDepartment || "-"}</td>
+                                <td>${formatNum(s.lecture)}</td>
+                                <td>${formatNum(s.tutorial)}</td>
+                                <td>${formatNum(s.practical)}</td>
+                                <td style="font-weight: bold;">${formatNum(getCredit(s))}</td>
+                            </tr>
+                            `).join("")}
+                        </tbody>
+                    </table>
+                </div>
+                `;
+            }).join("")}
+
+            <!-- 2b. FLEXIBLE COURSES & SPECIAL CASES SECTION AT THE END OF ELECTIVES -->
+            <div style="margin-top: 25px; margin-bottom: 20px;">
+                <table class="curriculum-table" style="margin-bottom: 0;">
+                    <thead>
+                        <tr style="background-color: #60a5fa; color: #000;">
+                            <th colspan="7" style="background-color: #60a5fa; font-weight: bold; font-size: 10pt; text-align: center; padding: 6px;">
+                                Flexible Courses for Open Electives and Professional Electives
+                            </th>
+                        </tr>
+                        <tr>
+                            <th style="width: 45px;">S.No.</th>
+                            <th style="width: 140px;">Course Code</th>
+                            <th style="text-align: left; padding-left: 8px;">Course</th>
+                            <th style="width: 45px;">L</th>
+                            <th style="width: 45px;">R</th>
+                            <th style="width: 45px;">P</th>
+                            <th style="width: 50px;">C</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${flexibleCourses.map((fc, idx) => `
+                        <tr>
+                            <td>${idx + 1}</td>
+                            <td style="font-weight: 600;">${fc.code}</td>
+                            <td style="text-align: left; padding-left: 8px;">${fc.title}</td>
+                            <td>${fc.l}</td>
+                            <td>${fc.r}</td>
+                            <td>${fc.p}</td>
+                            <td style="font-weight: bold;">${fc.c}</td>
+                        </tr>
+                        `).join("")}
+                        ${specialCasesNotes.map((note) => `
+                        <tr>
+                            <td colspan="7" style="text-align: left; padding-left: 10px; font-size: 8.8pt; color: #1e293b; background-color: #fff;">
+                                ${note}
+                            </td>
+                        </tr>
+                        `).join("")}
+                    </tbody>
+                </table>
+            </div>
         </div>
 
-        <!-- 3. INDIVIDUAL COURSE SYLLABI (PAGE BREAK STARTS HERE ONLY FOR SYLLABI) -->
+        <!-- 3. DETAILED SYLLABI (DEDUPLICATED BY COURSE CODE) -->
         <div class="syllabus-page-break"></div>
         <div class="section-header" style="margin-bottom: 18px;">
-            Detailed Syllabi (Semester 1 Onwards)
+            Detailed Syllabi - ${fullProgramHeader}
         </div>
 
         ${curricula.map((sem) => {
-        const semCourses = sem.courses || [];
-        const semElectives = sem.electiveGroups || [];
+            const semCourses = sem.courses || [];
+            const semElectives = sem.electiveGroups || [];
 
-        const courseSyllabiHtml = semCourses.map((course) => {
-            const sData = syllabusDetailMap[course.syllabusId];
-            if (!sData) return "";
+            // Core courses
+            const courseSyllabiHtml = semCourses.map((course) => {
+                const code = String(course.courseCode || "").trim().toUpperCase();
+                if (!code || printedSyllabusCodes.has(code)) return "";
+                const sData = syllabusDetailMap[course.syllabusId];
+                if (!sData) return "";
 
-            const L = Number(course.lecture) || 0;
-            const R = Number(course.tutorial) || 0;
-            const P = Number(course.practical) || 0;
-            const C = Number(course.credits) || 0;
+                printedSyllabusCodes.add(code);
 
-            return `
+                const L = Number(course.lecture) || 0;
+                const R = Number(course.tutorial) || 0;
+                const P = Number(course.practical) || 0;
+                const C = Number(course.credits) || 0;
+
+                return `
                 <div class="syllabus-box">
                     <div style="font-size: 8pt; font-weight: bold; color: #64748b; text-transform: uppercase;">
                         Semester ${sem.semester} • Course Syllabus
@@ -542,23 +600,28 @@ export async function downloadCompleteCurriculumBook({
                     ` : ""}
                 </div>
                 `;
-        }).join("");
+            }).join("");
 
-        const electiveSyllabiHtml = semElectives.map((grp) => {
-            const subs = subjectsMap[grp.id] || [];
-            return subs.map((sub) => {
-                const sData = syllabusDetailMap[sub.syllabusId];
-                if (!sData) return "";
+            // Elective courses
+            const electiveSyllabiHtml = semElectives.map((grp) => {
+                const subs = subjectsMap[grp.id] || [];
+                return subs.map((sub) => {
+                    const code = String(sub.courseCode || "").trim().toUpperCase();
+                    if (!code || printedSyllabusCodes.has(code)) return "";
+                    const sData = syllabusDetailMap[sub.syllabusId];
+                    if (!sData) return "";
 
-                const L = Number(sub.lecture) || 0;
-                const R = Number(sub.tutorial) || 0;
-                const P = Number(sub.practical) || 0;
-                const C = Number(sub.credits) || 0;
+                    printedSyllabusCodes.add(code);
 
-                return `
+                    const L = Number(sub.lecture) || 0;
+                    const R = Number(sub.tutorial) || 0;
+                    const P = Number(sub.practical) || 0;
+                    const C = Number(sub.credits) || 0;
+
+                    return `
                     <div class="syllabus-box">
                         <div style="font-size: 8pt; font-weight: bold; color: #64748b; text-transform: uppercase;">
-                            Semester ${sem.semester} •${grp.name} Elective
+                            ${normalizeGroupTitle(grp.name, grp.electiveType)}
                         </div>
                         <table class="syllabus-meta-table">
                             <tr>
@@ -580,7 +643,7 @@ export async function downloadCompleteCurriculumBook({
                             </tr>
                             <tr>
                                 <td style="width: 110px; font-weight: bold; background: #f8fafc;">Course type</td>
-                                <td>${sData.courseType || "Professional Elective"}</td>
+                                <td>${sData.courseType || "Elective"}</td>
                                 <td style="width: 110px; font-weight: bold; background: #f8fafc;">Pre-requisite</td>
                                 <td colspan="4">${sData.prerequisite || "NA"}</td>
                             </tr>
@@ -629,11 +692,11 @@ export async function downloadCompleteCurriculumBook({
                         ` : ""}
                     </div>
                     `;
+                }).join("");
             }).join("");
-        }).join("");
 
-        return courseSyllabiHtml + electiveSyllabiHtml;
-    }).join("")}
+            return courseSyllabiHtml + electiveSyllabiHtml;
+        }).join("")}
     </body>
     </html>
     `;
