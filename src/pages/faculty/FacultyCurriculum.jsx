@@ -34,7 +34,6 @@ function FacultyCurriculum() {
     const [subjectsLoading, setSubjectsLoading] = useState({});
     const [downloadingBook, setDownloadingBook] = useState(false);
 
-    // Modal state for text syllabus upload / view
     const [textModal, setTextModal] = useState({
         open: false,
         item: null,
@@ -433,7 +432,6 @@ function FacultyCurriculum() {
                     {getStatusLabel(status)}
                 </span>
                 <div className="d-flex flex-wrap justify-content-center align-items-center gap-1 mt-1">
-                    {/* Upload / Re-Upload Button */}
                     {canUpload && (
                         <button
                             type="button"
@@ -446,7 +444,6 @@ function FacultyCurriculum() {
                         </button>
                     )}
 
-                    {/* View Button */}
                     <button
                         type="button"
                         className="btn btn-sm btn-outline-primary py-0 px-2"
@@ -549,7 +546,6 @@ function FacultyCurriculum() {
                             >
                                 {curriculumLoading ? <span className="spinner-border spinner-border-sm"></span> : <><i className="bi bi-search me-1"></i>Search</>}
                             </button>
-
                             {semester === "ALL" && (
                                 <button
                                     type="button"
@@ -585,16 +581,40 @@ function FacultyCurriculum() {
                         const track1Practical = track1Items.reduce((s, x) => s + (Number(x.data.practical) || 0), 0);
                         const track1Credits = track1Items.reduce((s, x) => s + getCredit(x.data), 0);
 
+                        // CALCULATE TOTAL HOURS: L + R + P
+                        const totalHoursTrack1 = track1Lecture + track1Tutorial + track1Practical;
+
                         const track2Lecture = track2Items.reduce((s, x) => s + (Number(x.data.lecture) || 0), 0);
                         const track2Tutorial = track2Items.reduce((s, x) => s + (Number(x.data.tutorial) || 0), 0);
                         const track2Practical = track2Items.reduce((s, x) => s + (Number(x.data.practical) || 0), 0);
                         const track2Credits = track2Items.reduce((s, x) => s + getCredit(x.data), 0);
+                        const totalHoursTrack2 = track2Lecture + track2Tutorial + track2Practical;
+
+                        const maxTrackHours = Math.max(totalHoursTrack1, totalHoursTrack2);
+                        const isHoursCrossingLimit = maxTrackHours >= 34;
 
                         return (
                             <div key={curriculum.semester} className="card border-0 shadow-sm mb-4">
                                 <div className="card-header bg-primary text-white py-2 px-3">
                                     <div className="d-flex justify-content-between align-items-center">
-                                        <h6 className="fw-bold mb-0">{getSemesterTitle(curriculum.semester)}</h6>
+                                        <div className="d-flex align-items-center gap-2">
+                                            <h6 className="fw-bold mb-0">{getSemesterTitle(curriculum.semester)}</h6>
+
+                                            {/* FLASHING RED 'i' ICON WHEN TOTAL HOURS >= 34 */}
+                                            {isHoursCrossingLimit && (
+                                                <span
+                                                    className="blink-fast-red fs-5"
+                                                    title="Total hours is crossing 34"
+                                                    onClick={() =>
+                                                        toast.warning(
+                                                            `Total hours is crossing 34 (Total: ${formatNumber(maxTrackHours)} hrs/week)`
+                                                        )
+                                                    }
+                                                >
+                                                    <i className="bi bi-info-circle-fill"></i>
+                                                </span>
+                                            )}
+                                        </div>
                                         <small className="opacity-75">{programHeader}</small>
                                     </div>
                                 </div>
@@ -734,7 +754,9 @@ function FacultyCurriculum() {
 
                                             {/* TRACK 1 TOTAL */}
                                             <tr className="table-light fw-bold">
-                                                <td colSpan="3" className="text-end pe-2 py-1">Total</td>
+                                                <td colSpan="3" className="text-end pe-2 py-1">
+                                                    Total (Hours: {formatNumber(totalHoursTrack1)} hrs/wk)
+                                                </td>
                                                 <td className="py-1">{formatNumber(track1Lecture)}</td>
                                                 <td className="py-1">{formatNumber(track1Tutorial)}</td>
                                                 <td className="py-1">{formatNumber(track1Practical)}</td>
@@ -768,7 +790,9 @@ function FacultyCurriculum() {
                                                     })}
 
                                                     <tr className="table-light fw-bold">
-                                                        <td colSpan="3" className="text-end pe-2 py-1">Total</td>
+                                                        <td colSpan="3" className="text-end pe-2 py-1">
+                                                            Total (Hours: {formatNumber(totalHoursTrack2)} hrs/wk)
+                                                        </td>
                                                         <td className="py-1">{formatNumber(track2Lecture)}</td>
                                                         <td className="py-1">{formatNumber(track2Tutorial)}</td>
                                                         <td className="py-1">{formatNumber(track2Practical)}</td>
@@ -792,7 +816,7 @@ function FacultyCurriculum() {
                     item={textModal.item}
                     type={textModal.type}
                     readOnly={textModal.readOnly}
-                    isAdmin={false} // Strictly false for HOD and Dean
+                    isAdmin={false}
                     isFaculty={false}
                     programHeader={programHeader}
                     onClose={() => setTextModal({ open: false, item: null, type: "course", readOnly: false })}

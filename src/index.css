@@ -7,3 +7,39 @@
         margin-left: 260px;
     }
 }
+
+.faculty-main {
+    margin-left: 0;
+}
+
+@media (min-width: 992px) {
+    .faculty-main {
+        margin-left: 260px;
+    }
+}
+
+@keyframes fastRedBlink {
+    0% {
+        color: #ff0000;
+        transform: scale(1);
+        text-shadow: 0 0 4px rgba(255, 0, 0, 0.8);
+    }
+    50% {
+        color: #fffb00;
+        transform: scale(1.22);
+        text-shadow: 0 0 10px rgba(255, 0, 0, 1);
+    }
+    100% {
+        color: #ff0000;
+        transform: scale(1);
+        text-shadow: 0 0 4px rgba(255, 0, 0, 0.8);
+    }
+}
+
+.blink-fast-red {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    animation: fastRedBlink 0.5s infinite ease-in-out;
+}

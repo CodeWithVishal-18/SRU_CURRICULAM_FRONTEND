@@ -151,6 +151,7 @@ function Curriculum() {
             electiveGroups: data?.electiveGroups || data?.electives || [],
         };
     };
+
     const attachCourseSyllabusStatus = async (courses = []) => {
         return Promise.all(
             courses.map(async (course) => {
@@ -432,7 +433,6 @@ function Curriculum() {
 
         return (
             <div className="d-flex justify-content-center align-items-center gap-1 text-nowrap">
-                {/* Upload Button */}
                 <button
                     type="button"
                     className="btn btn-sm btn-primary py-0 px-1.5"
@@ -443,7 +443,6 @@ function Curriculum() {
                     {isUploaded ? "Edit" : "Upload"}
                 </button>
 
-                {/* View Button */}
                 <button
                     type="button"
                     className="btn btn-sm btn-outline-primary py-0 px-1.5"
@@ -456,16 +455,17 @@ function Curriculum() {
                     View
                 </button>
 
-                {/* Logs Button */}
                 <button
                     type="button"
                     className="btn btn-sm btn-outline-dark py-0 px-1.5"
                     style={{ fontSize: "0.78rem", minWidth: "50px" }}
-                    onClick={() => setLogModal({
-                        open: true,
-                        syllabusId: item.syllabusId,
-                        title: `${item.courseCode || ""} - ${item.courseName || ""}`,
-                    })}
+                    onClick={() =>
+                        setLogModal({
+                            open: true,
+                            syllabusId: item.syllabusId,
+                            title: `${item.courseCode || ""} - ${item.courseName || ""}`,
+                        })
+                    }
                     disabled={!item.syllabusId}
                     title={item.syllabusId ? "View Audit & Revision Logs" : "No logs available"}
                 >
@@ -602,16 +602,40 @@ function Curriculum() {
                         const track1Practical = track1Items.reduce((s, x) => s + (Number(x.data.practical) || 0), 0);
                         const track1Credits = track1Items.reduce((s, x) => s + getCredit(x.data), 0);
 
+                        // CALCULATE TOTAL HOURS: L + R + P
+                        const totalHoursTrack1 = track1Lecture + track1Tutorial + track1Practical;
+
                         const track2Lecture = track2Items.reduce((s, x) => s + (Number(x.data.lecture) || 0), 0);
                         const track2Tutorial = track2Items.reduce((s, x) => s + (Number(x.data.tutorial) || 0), 0);
                         const track2Practical = track2Items.reduce((s, x) => s + (Number(x.data.practical) || 0), 0);
                         const track2Credits = track2Items.reduce((s, x) => s + getCredit(x.data), 0);
+                        const totalHoursTrack2 = track2Lecture + track2Tutorial + track2Practical;
+
+                        const maxTrackHours = Math.max(totalHoursTrack1, totalHoursTrack2);
+                        const isHoursCrossingLimit = maxTrackHours >= 34;
 
                         return (
                             <div key={curriculum.semester} className="card border-0 shadow-sm mb-4">
                                 <div className="card-header bg-primary text-white py-2 px-3">
                                     <div className="d-flex justify-content-between align-items-center">
-                                        <h6 className="fw-bold mb-0">{getSemesterTitle(curriculum.semester)}</h6>
+                                        <div className="d-flex align-items-center gap-2">
+                                            <h6 className="fw-bold mb-0">{getSemesterTitle(curriculum.semester)}</h6>
+
+                                            {/* FLASHING RED 'i' ICON WHEN TOTAL HOURS >= 34 */}
+                                            {isHoursCrossingLimit && (
+                                                <span
+                                                    className="blink-fast-red fs-5"
+                                                    title="Total hours is crossing 34"
+                                                    onClick={() =>
+                                                        toast.warning(
+                                                            `Total hours is crossing 34 (Total: ${formatNumber(maxTrackHours)} hrs/week)`
+                                                        )
+                                                    }
+                                                >
+                                                    <i className="bi bi-info-circle-fill"></i>
+                                                </span>
+                                            )}
+                                        </div>
                                         <small className="opacity-75">{programHeader}</small>
                                     </div>
                                 </div>
@@ -814,7 +838,9 @@ function Curriculum() {
 
                                             {/* TRACK 1 TOTAL */}
                                             <tr className="table-light fw-bold">
-                                                <td colSpan="3" className="text-end pe-2 py-1">Total</td>
+                                                <td colSpan="3" className="text-end pe-2 py-1">
+                                                    Total (Hours: {formatNumber(totalHoursTrack1)} hrs/wk)
+                                                </td>
                                                 <td className="py-1">{formatNumber(track1Lecture)}</td>
                                                 <td className="py-1">{formatNumber(track1Tutorial)}</td>
                                                 <td className="py-1">{formatNumber(track1Practical)}</td>
@@ -861,7 +887,9 @@ function Curriculum() {
                                                     })}
 
                                                     <tr className="table-light fw-bold">
-                                                        <td colSpan="3" className="text-end pe-2 py-1">Total</td>
+                                                        <td colSpan="3" className="text-end pe-2 py-1">
+                                                            Total (Hours: {formatNumber(totalHoursTrack2)} hrs/wk)
+                                                        </td>
                                                         <td className="py-1">{formatNumber(track2Lecture)}</td>
                                                         <td className="py-1">{formatNumber(track2Tutorial)}</td>
                                                         <td className="py-1">{formatNumber(track2Practical)}</td>
