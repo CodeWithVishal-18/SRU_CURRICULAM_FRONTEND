@@ -45,18 +45,85 @@ export default function TextSyllabusModal({
     const [units, setUnits] = useState(L > 0 ? [{ title: "Unit 1: Introduction", topics: [""] }] : []);
     const [recitations, setRecitations] = useState(R > 0 ? [""] : []);
     const [labComponents, setLabComponents] = useState(P > 0 ? [""] : []);
-    const [textbooks, setTextbooks] = useState([""]);
-    const [referenceBooks, setReferenceBooks] = useState([""]);
-    const [onlineResources, setOnlineResources] = useState([""]);
 
-    const fetchRemarks = async (syllabusId) => {
-        try {
-            const res = await api.get(`/api/syllabi/${syllabusId}/remarks`);
-            setRemarksList(res.data || []);
-        } catch {
-            console.warn("Could not load remarks");
-        }
+    // Structured Book objects: { title, author, edition, publisher, year }
+    const [textbooks, setTextbooks] = useState([
+        { title: "", author: "", edition: "", publisher: "", year: "" }
+    ]);
+    const [referenceBooks, setReferenceBooks] = useState([
+        { title: "", author: "", edition: "", publisher: "", year: "" }
+    ]);
+
+    // Structured Online Resources: { platform: "", topic: "", url: "" }
+    const [onlineResources, setOnlineResources] = useState([
+        { platform: "", topic: "", url: "" }
+    ]);
+
+    // Helpers
+    const countWords = (text = "") => {
+        const trimmed = text.trim();
+        return trimmed ? trimmed.split(/\s+/).length : 0;
     };
+
+    const isValidUrl = (url = "") => {
+        const pattern = /^(https?:\/\/)?([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(:\d+)?(\/.*)?$/i;
+        return pattern.test(url.trim());
+    };
+
+    const parseBookString = (raw) => {
+        if (!raw) return { title: "", author: "", edition: "", publisher: "", year: "" };
+        if (typeof raw === "object") return raw;
+        try {
+            const parsed = JSON.parse(raw);
+            if (typeof parsed === "object") return parsed;
+        } catch {}
+        return { title: raw, author: "", edition: "", publisher: "", year: "" };
+    };
+
+    const parseResourceString = (raw) => {
+        if (!raw) return { platform: "", topic: "", url: "" };
+        if (typeof raw === "object") return raw;
+        try {
+            const parsed = JSON.parse(raw);
+            if (typeof parsed === "object") return parsed;
+        } catch {}
+        return { platform: "Online Resource", topic: "", url: raw };
+    };
+
+    const formatBookCitation = (b) => {
+        if (!b) return "";
+        if (typeof b === "string") return b;
+        const parts = [];
+        if (b.author?.trim()) parts.push(b.author.trim());
+        if (b.title?.trim()) parts.push(`“${b.title.trim()}”`);
+        if (b.edition?.trim()) parts.push(b.edition.trim());
+        if (b.publisher?.trim()) parts.push(b.publisher.trim());
+        if (b.year?.trim()) parts.push(b.year.trim());
+        return parts.join(", ");
+    };
+
+    const currentTheoryTopicsCount = useMemo(() => {
+        return units.reduce((acc, u) => acc + (u.topics ? u.topics.length : 0), 0);
+    }, [units]);
+
+    const unitStartOffsets = useMemo(() => {
+        const offsets = [];
+        let runningCount = 0;
+        units.forEach((u) => {
+            offsets.push(runningCount);
+            runningCount += (u.topics || []).length;
+        });
+        return offsets;
+    }, [units]);
+
+    const storedUser = useMemo(() => {
+        try {
+            return JSON.parse(localStorage.getItem("user") || "{}");
+        } catch {
+            return {};
+        }
+    }, []);
+    const isRealAdmin = Boolean(isAdmin && storedUser?.role === "ADMIN");
 
     useEffect(() => {
         const loadSyllabus = async () => {
@@ -85,9 +152,16 @@ export default function TextSyllabusModal({
                         if (parsed.units) setUnits(parsed.units);
                         if (parsed.recitations) setRecitations(parsed.recitations);
                         if (parsed.labComponents) setLabComponents(parsed.labComponents);
-                        if (parsed.textbooks) setTextbooks(parsed.textbooks);
-                        if (parsed.referenceBooks) setReferenceBooks(parsed.referenceBooks);
-                        if (parsed.onlineResources) setOnlineResources(parsed.onlineResources);
+
+                        if (parsed.textbooks?.length) {
+                            setTextbooks(parsed.textbooks.map(parseBookString));
+                        }
+                        if (parsed.referenceBooks?.length) {
+                            setReferenceBooks(parsed.referenceBooks.map(parseBookString));
+                        }
+                        if (parsed.onlineResources?.length) {
+                            setOnlineResources(parsed.onlineResources.map(parseResourceString));
+                        }
                     }
                 }
             } catch (err) {
@@ -100,11 +174,15 @@ export default function TextSyllabusModal({
         loadSyllabus();
     }, [item]);
 
-    const currentTheoryTopicsCount = useMemo(() => {
-        return units.reduce((acc, u) => acc + (u.topics ? u.topics.length : 0), 0);
-    }, [units]);
-
     const handleAddUnit = () => {
+        if (units.length >= 5) {
+            toast.warning("Maximum 5 units allowed");
+            return;
+        }
+        if (currentTheoryTopicsCount >= targetTheoryTopics) {
+            toast.warning(`Maximum theory topics limit reached (${targetTheoryTopics})`);
+            return;
+        }
         setUnits([...units, { title: `Unit ${units.length + 1}: `, topics: [""] }]);
     };
 
@@ -136,9 +214,6 @@ export default function TextSyllabusModal({
         setUnits(updated);
     };
 
-    // =========================================================
-    // POST COMMENT / REMARK (ANY USER)
-    // =========================================================
     const handlePostComment = async () => {
         if (!newComment.trim()) {
             toast.error("Please enter your comment or remark");
@@ -165,131 +240,6 @@ export default function TextSyllabusModal({
         } finally {
             setPostingComment(false);
         }
-    };
-
-    // =========================================================
-    // PRINT / DOWNLOAD AS PDF
-    // =========================================================
-    const handleDownloadPdf = () => {
-        const printWindow = window.open("", "_blank", "width=900,height=800");
-        if (!printWindow) {
-            toast.error("Please allow popups to download the PDF");
-            return;
-        }
-
-        const validCOs = courseOutcomes.filter((co) => co.trim());
-        const validRecs = recitations.filter((r) => r.trim());
-        const validLabs = labComponents.filter((l) => l.trim());
-        const validTbs = textbooks.filter((t) => t.trim());
-        const validRbs = referenceBooks.filter((r) => r.trim());
-        const validRes = onlineResources.filter((r) => r.trim());
-
-        const htmlContent = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>${item.courseCode || "Course"}_${item.courseName || "Syllabus"}</title>
-                <style>
-                    @page { size: A4; margin: 18mm 16mm; }
-                    body { font-family: 'Segoe UI', Arial, sans-serif; color: #111; line-height: 1.45; font-size: 11pt; margin: 0; padding: 0; }
-                    .header-banner { text-align: center; border-bottom: 2px solid #0d6efd; padding-bottom: 8px; margin-bottom: 16px; }
-                    .header-banner h4 { margin: 0 0 4px 0; font-size: 14pt; text-transform: uppercase; }
-                    .header-banner h5 { margin: 0; font-size: 11pt; font-weight: 600; color: #0d6efd; }
-                    table.meta-table { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
-                    table.meta-table td { border: 1px solid #333; padding: 6px 10px; font-size: 10.5pt; }
-                    .section-title { font-size: 11.5pt; font-weight: bold; border-bottom: 1.5px solid #222; padding-bottom: 3px; margin-top: 16px; margin-bottom: 8px; text-transform: uppercase; }
-                    ul, ol { margin-top: 4px; margin-bottom: 12px; padding-left: 22px; }
-                    li { margin-bottom: 4px; }
-                    .unit-block { margin-bottom: 10px; }
-                    .unit-title { font-weight: bold; color: #000; margin-bottom: 3px; }
-                </style>
-            </head>
-            <body>
-                <div class="header-banner">
-                    <h4>SR UNIVERSITY</h4>
-                    ${programHeader ? `<h5>${programHeader}</h5>` : ""}
-                </div>
-
-                <table class="meta-table">
-                    <tbody>
-                        <tr>
-                            <td colspan="3" style="font-size: 12pt; font-weight: bold;">
-                                <div>${item.courseCode || ""}</div>
-                                <div>${item.courseName || ""}</div>
-                            </td>
-                            <td style="width: 45px; text-align: center; font-weight: bold;">L</td>
-                            <td style="width: 45px; text-align: center; font-weight: bold;">R</td>
-                            <td style="width: 45px; text-align: center; font-weight: bold;">P</td>
-                            <td style="width: 45px; text-align: center; font-weight: bold;">C</td>
-                        </tr>
-                        <tr>
-                            <td colspan="3" style="color: #444; font-size: 10pt;">Credit Structure</td>
-                            <td style="text-align: center; font-weight: bold;">${L}</td>
-                            <td style="text-align: center; font-weight: bold;">${R}</td>
-                            <td style="text-align: center; font-weight: bold;">${P}</td>
-                            <td style="text-align: center; font-weight: bold;">${C}</td>
-                        </tr>
-                        <tr>
-                            <td style="width: 140px; font-weight: bold; background: #f2f2f2;">Course type</td>
-                            <td>${courseType || "Engineering Science"}</td>
-                            <td style="width: 140px; font-weight: bold; background: #f2f2f2;">Pre-requisite</td>
-                            <td colspan="4">${prerequisite || "NA"}</td>
-                        </tr>
-                    </tbody>
-                </table>
-
-                <div class="section-title">Course Outcomes:</div>
-                <ul style="list-style-type: none; padding-left: 0;">
-                    ${validCOs.map((co, idx) => `<li style="margin-bottom: 6px;"><strong>CO${idx + 1}:</strong> ${co}</li>`).join("")}
-                </ul>
-
-                ${L > 0 ? `
-                    <div class="section-title">Unit-Wise Syllabus</div>
-                    ${units.map((u) => `
-                        <div class="unit-block">
-                            <div class="unit-title">${u.title}</div>
-                            <ul style="margin: 0; padding-left: 18px;">
-                                ${(u.topics || []).filter(t => t.trim()).map(top => `<li>${top}</li>`).join("")}
-                            </ul>
-                        </div>
-                    `).join("")}
-                ` : ""}
-
-                ${R > 0 && validRecs.length > 0 ? `
-                    <div class="section-title">Recitation / Tutorial Topics</div>
-                    <ol>${validRecs.map((rec) => `<li>${rec}</li>`).join("")}</ol>
-                ` : ""}
-
-                ${P > 0 && validLabs.length > 0 ? `
-                    <div class="section-title">Lab / Product Components</div>
-                    <ol>${validLabs.map((lab) => `<li>${lab}</li>`).join("")}</ol>
-                ` : ""}
-
-                ${validTbs.length > 0 ? `
-                    <div class="section-title">Textbooks</div>
-                    <ol>${validTbs.map((tb) => `<li>${tb}</li>`).join("")}</ol>
-                ` : ""}
-
-                ${validRbs.length > 0 ? `
-                    <div class="section-title">Reference Books</div>
-                    <ol>${validRbs.map((rb) => `<li>${rb}</li>`).join("")}</ol>
-                ` : ""}
-
-                ${validRes.length > 0 ? `
-                    <div class="section-title">Online Resources / Useful Links</div>
-                    <ul>${validRes.map((res) => `<li><a href="${res.startsWith("http") ? res : `https://${res}`}">${res}</a></li>`).join("")}</ul>
-                ` : ""}
-            </body>
-            </html>
-        `;
-
-        printWindow.document.open();
-        printWindow.document.write(htmlContent);
-        printWindow.document.close();
-        printWindow.onload = () => {
-            printWindow.focus();
-            printWindow.print();
-        };
     };
 
     const validate = () => {
@@ -357,17 +307,29 @@ export default function TextSyllabusModal({
             }
         }
 
-        const validTb = textbooks.filter((t) => t.trim());
+        const validTb = textbooks.filter((b) => b.title?.trim() || b.author?.trim());
         if (validTb.length === 0) {
             toast.error("Please add at least 1 Textbook");
             return false;
         }
 
-        const urlRegex = /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/i;
-        const validRes = onlineResources.filter((r) => r.trim());
-        for (const res of validRes) {
-            if (!urlRegex.test(res.trim())) {
-                toast.error(`Invalid URL format: "${res}"`);
+        const validResources = onlineResources.filter((r) => r.url?.trim() || r.topic?.trim() || r.platform?.trim());
+        if (validResources.length > 3) {
+            toast.error("Maximum 3 reference links allowed");
+            return false;
+        }
+        for (let i = 0; i < validResources.length; i++) {
+            const res = validResources[i];
+            if (!res.url?.trim()) {
+                toast.error(`Please provide the Link/URL for Reference Link #${i + 1}`);
+                return false;
+            }
+            if (!isValidUrl(res.url)) {
+                toast.error(`Invalid URL format in Reference Link #${i + 1}: "${res.url}".`);
+                return false;
+            }
+            if (countWords(res.topic) > 30) {
+                toast.error(`Topic description for Reference Link #${i + 1} exceeds 30 words`);
                 return false;
             }
         }
@@ -377,6 +339,24 @@ export default function TextSyllabusModal({
 
     const handleSave = async (isDraft = false) => {
         if (!isDraft && !validate()) return;
+
+        const serializedTextbooks = textbooks
+            .filter((b) => b.title?.trim())
+            .map((b) => formatBookCitation(b));
+
+        const serializedReferenceBooks = referenceBooks
+            .filter((b) => b.title?.trim())
+            .map((b) => formatBookCitation(b));
+
+        const serializedOnlineResources = onlineResources
+            .filter((r) => r.url?.trim())
+            .map((r) =>
+                JSON.stringify({
+                    platform: r.platform?.trim() || "Online Resource",
+                    topic: r.topic?.trim() || "",
+                    url: r.url.trim(),
+                })
+            );
 
         const payload = {
             courseId: !isElective ? item.id : null,
@@ -388,9 +368,9 @@ export default function TextSyllabusModal({
             units: units,
             recitations: recitations.filter((r) => r.trim()),
             labComponents: labComponents.filter((l) => l.trim()),
-            textbooks: textbooks.filter((t) => t.trim()),
-            referenceBooks: referenceBooks.filter((r) => r.trim()),
-            onlineResources: onlineResources.filter((r) => r.trim()),
+            textbooks: serializedTextbooks,
+            referenceBooks: serializedReferenceBooks,
+            onlineResources: serializedOnlineResources,
         };
 
         try {
@@ -406,9 +386,6 @@ export default function TextSyllabusModal({
         }
     };
 
-    // =========================================================
-    // ADMIN ONLY REVIEW ACTIONS (APPROVE & REJECT)
-    // =========================================================
     const handleAdminReview = async (status) => {
         if (!item.syllabusId) return;
 
@@ -431,6 +408,150 @@ export default function TextSyllabusModal({
         } finally {
             setSubmitting(false);
         }
+    };
+
+    const handleDownloadPdf = () => {
+        const printWindow = window.open("", "_blank", "width=900,height=800");
+        if (!printWindow) {
+            toast.error("Please allow popups to download the PDF");
+            return;
+        }
+
+        const validCOs = courseOutcomes.filter((co) => co.trim());
+        const validRecs = recitations.filter((r) => r.trim());
+        const validLabs = labComponents.filter((l) => l.trim());
+        const validTbs = textbooks.map(formatBookCitation).filter(Boolean);
+        const validRbs = referenceBooks.map(formatBookCitation).filter(Boolean);
+        const validRes = onlineResources.filter((r) => r.url?.trim());
+
+        const htmlContent = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>${item.courseCode || "Course"}_${item.courseName || "Syllabus"}</title>
+                <style>
+                    @page { size: A4; margin: 18mm 16mm; }
+                    body { font-family: 'Segoe UI', Arial, sans-serif; color: #111; line-height: 1.45; font-size: 11pt; margin: 0; padding: 0; }
+                    .header-banner { text-align: center; border-bottom: 2px solid #0d6efd; padding-bottom: 8px; margin-bottom: 16px; }
+                    .header-banner h4 { margin: 0 0 4px 0; font-size: 14pt; text-transform: uppercase; }
+                    .header-banner h5 { margin: 0; font-size: 11pt; font-weight: 600; color: #0d6efd; }
+                    table.meta-table { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+                    table.meta-table td { border: 1px solid #333; padding: 6px 10px; font-size: 10.5pt; }
+                    .section-title { font-size: 11.5pt; font-weight: bold; border-bottom: 1.5px solid #222; padding-bottom: 3px; margin-top: 16px; margin-bottom: 8px; text-transform: uppercase; }
+                    ol, ul { margin-top: 4px; margin-bottom: 12px; padding-left: 22px; }
+                    li { margin-bottom: 4px; }
+                </style>
+            </head>
+            <body>
+                <div class="header-banner">
+                    <h4>SR UNIVERSITY</h4>
+                    ${programHeader ? `<h5>${programHeader}</h5>` : ""}
+                </div>
+
+                <table class="meta-table">
+                    <tbody>
+                        <tr>
+                            <td colspan="3" style="font-size: 12pt; font-weight: bold;">
+                                <div>${item.courseCode || ""}</div>
+                                <div>${item.courseName || ""}</div>
+                            </td>
+                            <td style="width: 45px; text-align: center; font-weight: bold;">L</td>
+                            <td style="width: 45px; text-align: center; font-weight: bold;">R</td>
+                            <td style="width: 45px; text-align: center; font-weight: bold;">P</td>
+                            <td style="width: 45px; text-align: center; font-weight: bold;">C</td>
+                        </tr>
+                        <tr>
+                            <td colspan="3" style="color: #444; font-size: 10pt;">Credit Structure</td>
+                            <td style="text-align: center; font-weight: bold;">${L}</td>
+                            <td style="text-align: center; font-weight: bold;">${R}</td>
+                            <td style="text-align: center; font-weight: bold;">${P}</td>
+                            <td style="text-align: center; font-weight: bold;">${C}</td>
+                        </tr>
+                        <tr>
+                            <td style="width: 140px; font-weight: bold; background: #f2f2f2;">Course type</td>
+                            <td>${courseType || "Engineering Science"}</td>
+                            <td style="width: 140px; font-weight: bold; background: #f2f2f2;">Pre-requisite</td>
+                            <td colspan="4">${prerequisite || "NA"}</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="section-title">Course Outcomes:</div>
+                <ul style="list-style-type: none; padding-left: 0;">
+                    ${validCOs.map((co, idx) => `<li style="margin-bottom: 6px;"><strong>CO${idx + 1}:</strong> ${co}</li>`).join("")}
+                </ul>
+
+                ${L > 0 ? `
+                    <div class="section-title">Unit-Wise Syllabus</div>
+                    ${units.map((u, uIdx) => {
+                        const startNum = unitStartOffsets[uIdx] || 0;
+                        return `
+                            <div style="margin-bottom: 10px;">
+                                <div style="font-weight: bold;">${u.title}</div>
+                                <ul style="margin: 0; padding-left: 20px; list-style-type: none;">
+                                    ${(u.topics || []).map((top, tIdx) => `<li><strong>${startNum + tIdx + 1}.</strong> ${top}</li>`).join("")}
+                                </ul>
+                            </div>
+                        `;
+                    }).join("")}
+                ` : ""}
+
+                ${R > 0 && validRecs.length > 0 ? `
+                    <div class="section-title">Recitation / Tutorial Topics</div>
+                    <ol>${validRecs.map((rec) => `<li>${rec}</li>`).join("")}</ol>
+                ` : ""}
+
+                ${P > 0 && validLabs.length > 0 ? `
+                    <div class="section-title">Lab / Product Components</div>
+                    <ol>${validLabs.map((lab) => `<li>${lab}</li>`).join("")}</ol>
+                ` : ""}
+
+                ${validTbs.length > 0 ? `
+                    <div class="section-title">Textbooks</div>
+                    <ol>${validTbs.map((tb) => `<li>${tb}</li>`).join("")}</ol>
+                ` : ""}
+
+                ${validRbs.length > 0 ? `
+                    <div class="section-title">Reference Books</div>
+                    <ol>${validRbs.map((rb) => `<li>${rb}</li>`).join("")}</ol>
+                ` : ""}
+
+                ${validRes.length > 0 ? `
+                    <div class="section-title">Online Resources & Reference Links</div>
+                    <table style="width: 100%; border-collapse: collapse; margin-top: 6px; margin-bottom: 12px;">
+                        <thead>
+                            <tr style="background: #f1f5f9; text-align: left;">
+                                <th style="border: 1px solid #333; padding: 5px 8px; width: 40px; text-align: center;">#</th>
+                                <th style="border: 1px solid #333; padding: 5px 8px; width: 130px;">Platform</th>
+                                <th style="border: 1px solid #333; padding: 5px 8px;">Topic</th>
+                                <th style="border: 1px solid #333; padding: 5px 8px;">Resource Link</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${validRes.map((res, idx) => `
+                                <tr>
+                                    <td style="border: 1px solid #333; padding: 5px 8px; text-align: center; font-weight: bold;">${idx + 1}</td>
+                                    <td style="border: 1px solid #333; padding: 5px 8px; font-weight: 600; color: #0d6efd;">${res.platform || "Online"}</td>
+                                    <td style="border: 1px solid #333; padding: 5px 8px;">${res.topic || "-"}</td>
+                                    <td style="border: 1px solid #333; padding: 5px 8px;">
+                                        <a href="${res.url.startsWith("http") ? res.url : `https://${res.url}`}">${res.url}</a>
+                                    </td>
+                                </tr>
+                            `).join("")}
+                        </tbody>
+                    </table>
+                ` : ""}
+            </body>
+            </html>
+        `;
+
+        printWindow.document.open();
+        printWindow.document.write(htmlContent);
+        printWindow.document.close();
+        printWindow.onload = () => {
+            printWindow.focus();
+            printWindow.print();
+        };
     };
 
     const getRoleBadge = (role) => {
@@ -481,7 +602,6 @@ export default function TextSyllabusModal({
                                     </div>
                                 )}
 
-                                {/* REJECTION BANNER: HOD/DEAN can edit & re-upload, Admin can also inspect */}
                                 {currentStatus === "REJECTED" && (
                                     <div className="alert alert-danger border-0 d-flex justify-content-between align-items-center mb-4 p-3 rounded-3">
                                         <div>
@@ -493,7 +613,7 @@ export default function TextSyllabusModal({
                                                 <strong>Remark: </strong> {rejectionReason || "Please revise and upload another version."}
                                             </div>
                                         </div>
-                                        {!isFaculty && !isAdmin && (
+                                        {!isFaculty && !isRealAdmin && (
                                             <button
                                                 type="button"
                                                 className="btn btn-sm btn-danger px-3 text-nowrap"
@@ -505,6 +625,7 @@ export default function TextSyllabusModal({
                                     </div>
                                 )}
 
+                                {/* VIEW MODE TABLE HEADER WITH LRPC */}
                                 <table className="table table-bordered text-center align-middle mb-4">
                                     <tbody>
                                         <tr className="fw-bold">
@@ -545,16 +666,21 @@ export default function TextSyllabusModal({
                                 {L > 0 && (
                                     <div className="mb-4">
                                         <h6 className="fw-bold text-dark border-bottom pb-2">Unit-Wise Syllabus</h6>
-                                        {units.map((u, uIdx) => (
-                                            <div key={uIdx} className="mb-3 ps-2">
-                                                <div className="fw-bold text-primary mb-1">{u.title}</div>
-                                                <ul className="list-unstyled ps-3 mb-0">
-                                                    {u.topics.map((top, tIdx) => (
-                                                        <li key={tIdx} className="text-secondary mb-1">• {top}</li>
-                                                    ))}
-                                                </ul>
-                                            </div>
-                                        ))}
+                                        {units.map((u, uIdx) => {
+                                            const startNum = unitStartOffsets[uIdx] || 0;
+                                            return (
+                                                <div key={uIdx} className="mb-3 ps-2">
+                                                    <div className="fw-bold text-primary mb-1">{u.title}</div>
+                                                    <ul className="list-unstyled ps-3 mb-0">
+                                                        {(u.topics || []).map((top, tIdx) => (
+                                                            <li key={tIdx} className="text-secondary mb-1">
+                                                                <strong className="text-dark me-1">{startNum + tIdx + 1}.</strong> {top}
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 )}
 
@@ -584,38 +710,67 @@ export default function TextSyllabusModal({
                                     <h6 className="fw-bold text-dark border-bottom pb-2">Textbooks</h6>
                                     <ol className="ps-3 mb-0">
                                         {textbooks.map((tb, bIdx) => (
-                                            <li key={bIdx} className="mb-1 text-secondary">{tb}</li>
+                                            <li key={bIdx} className="mb-1 text-secondary">
+                                                {formatBookCitation(tb)}
+                                            </li>
                                         ))}
                                     </ol>
                                 </div>
 
-                                {referenceBooks.length > 0 && (
+                                {referenceBooks.some(b => b.title?.trim()) && (
                                     <div className="mb-4">
                                         <h6 className="fw-bold text-dark border-bottom pb-2">Reference Books</h6>
                                         <ol className="ps-3 mb-0">
-                                            {referenceBooks.map((rb, rIdx) => (
-                                                <li key={rIdx} className="mb-1 text-secondary">{rb}</li>
+                                            {referenceBooks.filter(b => b.title?.trim()).map((rb, rIdx) => (
+                                                <li key={rIdx} className="mb-1 text-secondary">
+                                                    {formatBookCitation(rb)}
+                                                </li>
                                             ))}
                                         </ol>
                                     </div>
                                 )}
 
-                                {onlineResources.length > 0 && (
+                                {onlineResources.some(r => r.url?.trim()) && (
                                     <div className="mb-4">
-                                        <h6 className="fw-bold text-dark border-bottom pb-2">Online Resources / Useful Links</h6>
-                                        <ul className="list-unstyled ps-3 mb-0">
-                                            {onlineResources.map((res, oIdx) => (
-                                                <li key={oIdx} className="mb-1">
-                                                    <a href={res.startsWith("http") ? res : `https://${res}`} target="_blank" rel="noopener noreferrer">
-                                                        {res}
-                                                    </a>
-                                                </li>
+                                        <h6 className="fw-bold text-dark border-bottom pb-2">
+                                            <i className="bi bi-globe me-2 text-primary"></i> Reference Links & Online Resources
+                                        </h6>
+                                        <div className="row g-2">
+                                            {onlineResources.filter(r => r.url?.trim()).map((res, oIdx) => (
+                                                <div key={oIdx} className="col-12">
+                                                    <div className="p-2.5 border rounded-3 bg-light d-flex justify-content-between align-items-center">
+                                                        <div>
+                                                            <div className="d-flex align-items-center gap-2 mb-1">
+                                                                <span className="badge bg-secondary-subtle text-secondary fw-semibold">
+                                                                    #{oIdx + 1}
+                                                                </span>
+                                                                <span className="badge bg-info-subtle text-info-emphasis border border-info-subtle">
+                                                                    {res.platform || "Online Resource"}
+                                                                </span>
+                                                                {res.topic && (
+                                                                    <strong className="text-dark small">
+                                                                        {res.topic}
+                                                                    </strong>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <a
+                                                            href={res.url.startsWith("http") ? res.url : `https://${res.url}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="btn btn-sm btn-outline-primary py-1 px-3 d-flex align-items-center gap-1 text-nowrap"
+                                                        >
+                                                            <span>Open Link</span>
+                                                            <i className="bi bi-box-arrow-up-right small"></i>
+                                                        </a>
+                                                    </div>
+                                                </div>
                                             ))}
-                                        </ul>
+                                        </div>
                                     </div>
                                 )}
 
-                                {/* UNIFIED DISCUSSION & REMARKS FEED (SHARED ACROSS ALL ROLES) */}
+                                {/* UNIFIED DISCUSSION FEED */}
                                 <div className="border rounded-3 p-3 mt-4 bg-light shadow-sm">
                                     <div className="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2">
                                         <h6 className="fw-bold text-primary mb-0">
@@ -627,7 +782,6 @@ export default function TextSyllabusModal({
                                         </small>
                                     </div>
 
-                                    {/* Comments Stream */}
                                     <div className="d-flex flex-column gap-2 mb-3" style={{ maxHeight: "250px", overflowY: "auto" }}>
                                         {remarksList.length === 0 ? (
                                             <p className="text-muted small mb-0 py-2 text-center fst-italic">
@@ -661,7 +815,6 @@ export default function TextSyllabusModal({
                                         <div ref={commentsEndRef} />
                                     </div>
 
-                                    {/* Add Comment Box */}
                                     <div className="input-group">
                                         <textarea
                                             className="form-control form-control-sm"
@@ -691,36 +844,65 @@ export default function TextSyllabusModal({
                         ) : (
                             /* EDITING / UPLOAD FORM */
                             <div>
-                                <div className="card bg-light border p-3 mb-4 rounded-3">
-                                    <div className="row g-3 align-items-center">
-                                        <div className="col-md-3">
-                                            <label className="text-muted small d-block">Course Code</label>
-                                            <span className="fw-bold fs-6">{item.courseCode || "-"}</span>
-                                        </div>
-                                        <div className="col-md-5">
-                                            <label className="text-muted small d-block">Course Name</label>
-                                            <span className="fw-bold fs-6">{item.courseName}</span>
-                                        </div>
-                                        <div className="col-md-4">
-                                            <label className="text-muted small d-block">L - R - P - C</label>
-                                            <span className="badge bg-primary fs-6 me-2">{L} - {R} - {P} - {C}</span>
-                                            <span className="badge bg-secondary-subtle text-secondary fs-6">{item.category || "CORE"}</span>
-                                        </div>
-                                    </div>
-                                    <hr className="my-2" />
-                                    <div className="row g-3 mt-1">
-                                        <div className="col-md-6">
-                                            <label className="form-label fw-semibold small">Course Type *</label>
-                                            <input type="text" className="form-control" value={courseType} onChange={(e) => setCourseType(e.target.value)} />
-                                        </div>
-                                        <div className="col-md-6">
-                                            <label className="form-label fw-semibold small">Pre-requisite *</label>
-                                            <input type="text" className="form-control" value={prerequisite} onChange={(e) => setPrerequisite(e.target.value)} />
+                                {/* EXACT TABLE HEADER WITH LRPC COLUMNS (LIKE THE PROVIDED IMAGE) */}
+                                <div className="border rounded-3 overflow-hidden shadow-sm mb-4 bg-white">
+                                    <table className="table table-bordered mb-0 align-middle text-center">
+                                        <tbody>
+                                            <tr>
+                                                <td colSpan="3" className="text-start p-3 bg-white">
+                                                    <div className="text-primary fw-bold fs-5 mb-1">
+                                                        {item.courseCode || "-"}
+                                                    </div>
+                                                    <div className="text-dark fw-bold fs-6">
+                                                        {item.courseName}
+                                                    </div>
+                                                </td>
+                                                <td style={{ width: "65px" }} className="fw-bold bg-white text-dark fs-6">L</td>
+                                                <td style={{ width: "65px" }} className="fw-bold bg-white text-dark fs-6">R</td>
+                                                <td style={{ width: "65px" }} className="fw-bold bg-white text-dark fs-6">P</td>
+                                                <td style={{ width: "65px" }} className="fw-bold bg-white text-dark fs-6">C</td>
+                                            </tr>
+                                            <tr>
+                                                <td colSpan="3" className="text-start text-secondary px-3 py-2 bg-light-subtle">
+                                                    Credit Structure
+                                                </td>
+                                                <td className="fw-bold bg-light-subtle text-dark fs-6">{L}</td>
+                                                <td className="fw-bold bg-light-subtle text-dark fs-6">{R}</td>
+                                                <td className="fw-bold bg-light-subtle text-dark fs-6">{P}</td>
+                                                <td className="fw-bold bg-light-subtle text-dark fs-6">{C}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+
+                                    {/* COURSE TYPE & PRE-REQUISITE ROW */}
+                                    <div className="p-3 bg-light border-top">
+                                        <div className="row g-3">
+                                            <div className="col-md-6">
+                                                <label className="form-label fw-semibold small mb-1">Course Type *</label>
+                                                <input
+                                                    type="text"
+                                                    className="form-control form-control-sm"
+                                                    value={courseType}
+                                                    onChange={(e) => setCourseType(e.target.value)}
+                                                    placeholder="e.g. Engineering Science / Professional Core"
+                                                />
+                                            </div>
+                                            <div className="col-md-6">
+                                                <label className="form-label fw-semibold small mb-1">Pre-requisite *</label>
+                                                <input
+                                                    type="text"
+                                                    className="form-control form-control-sm"
+                                                    value={prerequisite}
+                                                    onChange={(e) => setPrerequisite(e.target.value)}
+                                                    placeholder="e.g. NA or course code"
+                                                />
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="card border p-3 mb-4 rounded-3">
+                                {/* COURSE OUTCOMES */}
+                                <div className="card border p-3 mb-4 rounded-3 shadow-sm">
                                     <div className="d-flex justify-content-between align-items-center mb-2">
                                         <h6 className="fw-bold mb-0 text-primary">Course Outcomes (Min 3, Max 5)</h6>
                                         <button type="button" className="btn btn-sm btn-outline-primary" disabled={courseOutcomes.length >= 5} onClick={() => setCourseOutcomes([...courseOutcomes, ""])}>+ Add Outcome</button>
@@ -740,53 +922,76 @@ export default function TextSyllabusModal({
                                     ))}
                                 </div>
 
+                                {/* THEORY UNITS WITH SEQUENTIAL TOPIC NUMBERING */}
                                 {L > 0 ? (
-                                    <div className="card border p-3 mb-4 rounded-3">
+                                    <div className="card border p-3 mb-4 rounded-3 shadow-sm">
                                         <div className="d-flex justify-content-between align-items-center mb-2">
                                             <div>
                                                 <h6 className="fw-bold mb-0 text-primary">Unit-Wise Syllabus (Theory)</h6>
                                                 <small className="text-muted">
-                                                    Total Topics: <strong className={currentTheoryTopicsCount === targetTheoryTopics ? "text-success" : "text-danger"}>{currentTheoryTopicsCount} / {targetTheoryTopics}</strong> (Must equal L × 12)
+                                                    Total Topics: <strong className={currentTheoryTopicsCount === targetTheoryTopics ? "text-success" : "text-danger"}>{currentTheoryTopicsCount} / {targetTheoryTopics}</strong> (Must equal L × 12) • Units: <strong>{units.length} / 5</strong>
                                                 </small>
                                             </div>
-                                            <button type="button" className="btn btn-sm btn-outline-primary" onClick={handleAddUnit}>+ Add Unit</button>
+                                            <button
+                                                type="button"
+                                                className="btn btn-sm btn-outline-primary"
+                                                disabled={units.length >= 5 || currentTheoryTopicsCount >= targetTheoryTopics}
+                                                onClick={handleAddUnit}
+                                                title={units.length >= 5 ? "Maximum 5 units reached" : currentTheoryTopicsCount >= targetTheoryTopics ? "Target topics limit reached" : "Add Unit"}
+                                            >
+                                                + Add Unit
+                                            </button>
                                         </div>
 
-                                        {units.map((unit, uIdx) => (
-                                            <div key={uIdx} className="border p-3 rounded mb-3 bg-light-subtle">
-                                                <div className="d-flex justify-content-between align-items-center mb-2">
-                                                    <input type="text" className="form-control fw-bold me-2" value={unit.title} onChange={(e) => {
-                                                        const u = [...units]; u[uIdx].title = e.target.value; setUnits(u);
-                                                    }} placeholder={`Unit ${uIdx + 1}: Title`} />
-                                                    <button type="button" className="btn btn-sm btn-outline-danger text-nowrap" onClick={() => handleRemoveUnit(uIdx)}>Remove Unit</button>
-                                                </div>
+                                        {units.map((unit, uIdx) => {
+                                            const startOffset = unitStartOffsets[uIdx] || 0;
+                                            return (
+                                                <div key={uIdx} className="border p-3 rounded mb-3 bg-light-subtle">
+                                                    <div className="d-flex justify-content-between align-items-center mb-2">
+                                                        <input type="text" className="form-control fw-bold me-2" value={unit.title} onChange={(e) => {
+                                                            const u = [...units]; u[uIdx].title = e.target.value; setUnits(u);
+                                                        }} placeholder={`Unit ${uIdx + 1}: Title`} />
+                                                        <button type="button" className="btn btn-sm btn-outline-danger text-nowrap" onClick={() => handleRemoveUnit(uIdx)}>Remove Unit</button>
+                                                    </div>
 
-                                                {(unit.topics || []).map((top, tIdx) => (
-                                                    <div key={tIdx} className="input-group mb-1">
-                                                        <span className="input-group-text small">{tIdx + 1}</span>
-                                                        <input type="text" className="form-control form-control-sm" placeholder="Topic description..." value={top} onChange={(e) => {
-                                                            const u = [...units]; u[uIdx].topics[tIdx] = e.target.value; setUnits(u);
-                                                        }} />
-                                                        <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => handleRemoveTopicFromUnit(uIdx, tIdx)}>
-                                                            <i className="bi bi-x"></i>
+                                                    {(unit.topics || []).map((top, tIdx) => {
+                                                        const sequentialTopicNumber = startOffset + tIdx + 1;
+                                                        return (
+                                                            <div key={tIdx} className="input-group mb-1">
+                                                                <span className="input-group-text small fw-bold bg-light" style={{ minWidth: "45px", justifyContent: "center" }}>
+                                                                    {sequentialTopicNumber}
+                                                                </span>
+                                                                <input type="text" className="form-control form-control-sm" placeholder={`Topic description for topic #${sequentialTopicNumber}...`} value={top} onChange={(e) => {
+                                                                    const u = [...units]; u[uIdx].topics[tIdx] = e.target.value; setUnits(u);
+                                                                }} />
+                                                                <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => handleRemoveTopicFromUnit(uIdx, tIdx)}>
+                                                                    <i className="bi bi-x"></i>
+                                                                </button>
+                                                            </div>
+                                                        );
+                                                    })}
+
+                                                    <div className="mt-2">
+                                                        <button
+                                                            type="button"
+                                                            className="btn btn-sm btn-link text-decoration-none p-0"
+                                                            disabled={currentTheoryTopicsCount >= targetTheoryTopics}
+                                                            onClick={() => handleAddTopicToUnit(uIdx)}
+                                                        >
+                                                            + Add Topic to this Unit
                                                         </button>
                                                     </div>
-                                                ))}
-
-                                                <div className="mt-2">
-                                                    <button type="button" className="btn btn-sm btn-link text-decoration-none p-0" disabled={currentTheoryTopicsCount >= targetTheoryTopics} onClick={() => handleAddTopicToUnit(uIdx)}>
-                                                        + Add Topic to this Unit
-                                                    </button>
                                                 </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 ) : (
                                     <div className="alert alert-secondary small mb-4">Theory Section: Not Applicable (L = 0)</div>
                                 )}
 
+                                {/* RECITATION */}
                                 {R > 0 ? (
-                                    <div className="card border p-3 mb-4 rounded-3">
+                                    <div className="card border p-3 mb-4 rounded-3 shadow-sm">
                                         <div className="d-flex justify-content-between align-items-center mb-2">
                                             <div>
                                                 <h6 className="fw-bold mb-0 text-primary">Recitation / Tutorial Topics</h6>
@@ -798,7 +1003,7 @@ export default function TextSyllabusModal({
                                         </div>
                                         {recitations.map((rec, rIdx) => (
                                             <div key={rIdx} className="input-group mb-2">
-                                                <span className="input-group-text small">{rIdx + 1}</span>
+                                                <span className="input-group-text small fw-bold">{rIdx + 1}</span>
                                                 <input type="text" className="form-control form-control-sm" placeholder="Recitation topic..." value={rec} onChange={(e) => {
                                                     const r = [...recitations]; r[rIdx] = e.target.value; setRecitations(r);
                                                 }} />
@@ -812,8 +1017,9 @@ export default function TextSyllabusModal({
                                     <div className="alert alert-secondary small mb-4">Recitation Section: Not Applicable (R = 0)</div>
                                 )}
 
+                                {/* LAB */}
                                 {P > 0 ? (
-                                    <div className="card border p-3 mb-4 rounded-3">
+                                    <div className="card border p-3 mb-4 rounded-3 shadow-sm">
                                         <div className="d-flex justify-content-between align-items-center mb-2">
                                             <div>
                                                 <h6 className="fw-bold mb-0 text-primary">Lab / Product Components</h6>
@@ -825,7 +1031,7 @@ export default function TextSyllabusModal({
                                         </div>
                                         {labComponents.map((lab, lIdx) => (
                                             <div key={lIdx} className="input-group mb-2">
-                                                <span className="input-group-text small">{lIdx + 1}</span>
+                                                <span className="input-group-text small fw-bold">{lIdx + 1}</span>
                                                 <input type="text" className="form-control form-control-sm" placeholder="Lab activity..." value={lab} onChange={(e) => {
                                                     const l = [...labComponents]; l[lIdx] = e.target.value; setLabComponents(l);
                                                 }} />
@@ -839,70 +1045,328 @@ export default function TextSyllabusModal({
                                     <div className="alert alert-secondary small mb-4">Laboratory Section: Not Applicable (P = 0)</div>
                                 )}
 
-                                <div className="card border p-3 mb-4 rounded-3">
+                                {/* TEXTBOOKS */}
+                                <div className="card border p-3 mb-4 rounded-3 shadow-sm">
                                     <div className="d-flex justify-content-between align-items-center mb-2">
                                         <h6 className="fw-bold mb-0 text-primary">Textbooks (Maximum 2)</h6>
-                                        <button type="button" className="btn btn-sm btn-outline-primary" disabled={textbooks.length >= 2} onClick={() => setTextbooks([...textbooks, ""])}>+ Add Textbook</button>
+                                        <button
+                                            type="button"
+                                            className="btn btn-sm btn-outline-primary"
+                                            disabled={textbooks.length >= 2}
+                                            onClick={() => setTextbooks([...textbooks, { title: "", author: "", edition: "", publisher: "", year: "" }])}
+                                        >
+                                            + Add Textbook
+                                        </button>
                                     </div>
                                     {textbooks.map((tb, idx) => (
-                                        <div key={idx} className="input-group mb-2">
-                                            <span className="input-group-text small">#{idx + 1}</span>
-                                            <input type="text" className="form-control form-control-sm" placeholder="Author, “Book Title”, Edition, Publisher, Year." value={tb} onChange={(e) => {
-                                                const t = [...textbooks]; t[idx] = e.target.value; setTextbooks(t);
-                                            }} />
-                                            <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => setTextbooks(textbooks.filter((_, i) => i !== idx))}>
-                                                <i className="bi bi-x"></i>
-                                            </button>
+                                        <div key={idx} className="border p-3 rounded mb-2 bg-light-subtle">
+                                            <div className="d-flex justify-content-between align-items-center mb-2">
+                                                <strong className="text-secondary small">Textbook #{idx + 1}</strong>
+                                                {textbooks.length > 1 && (
+                                                    <button type="button" className="btn btn-sm btn-outline-danger py-0 px-2" onClick={() => setTextbooks(textbooks.filter((_, i) => i !== idx))}>
+                                                        Remove
+                                                    </button>
+                                                )}
+                                            </div>
+                                            <div className="row g-2">
+                                                <div className="col-md-6">
+                                                    <label className="form-label small text-muted mb-0">Book Title *</label>
+                                                    <input
+                                                        type="text"
+                                                        className="form-control form-control-sm"
+                                                        placeholder="e.g. Modern Operating Systems"
+                                                        value={tb.title || ""}
+                                                        onChange={(e) => {
+                                                            const updated = [...textbooks];
+                                                            updated[idx].title = e.target.value;
+                                                            setTextbooks(updated);
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div className="col-md-6">
+                                                    <label className="form-label small text-muted mb-0">Author(s) *</label>
+                                                    <input
+                                                        type="text"
+                                                        className="form-control form-control-sm"
+                                                        placeholder="e.g. Andrew S. Tanenbaum, Herbert Bos"
+                                                        value={tb.author || ""}
+                                                        onChange={(e) => {
+                                                            const updated = [...textbooks];
+                                                            updated[idx].author = e.target.value;
+                                                            setTextbooks(updated);
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div className="col-md-4">
+                                                    <label className="form-label small text-muted mb-0">Edition</label>
+                                                    <input
+                                                        type="text"
+                                                        className="form-control form-control-sm"
+                                                        placeholder="e.g. 4th Edition"
+                                                        value={tb.edition || ""}
+                                                        onChange={(e) => {
+                                                            const updated = [...textbooks];
+                                                            updated[idx].edition = e.target.value;
+                                                            setTextbooks(updated);
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div className="col-md-5">
+                                                    <label className="form-label small text-muted mb-0">Publisher</label>
+                                                    <input
+                                                        type="text"
+                                                        className="form-control form-control-sm"
+                                                        placeholder="e.g. Pearson Education"
+                                                        value={tb.publisher || ""}
+                                                        onChange={(e) => {
+                                                            const updated = [...textbooks];
+                                                            updated[idx].publisher = e.target.value;
+                                                            setTextbooks(updated);
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div className="col-md-3">
+                                                    <label className="form-label small text-muted mb-0">Year</label>
+                                                    <input
+                                                        type="text"
+                                                        className="form-control form-control-sm"
+                                                        placeholder="e.g. 2015"
+                                                        value={tb.year || ""}
+                                                        onChange={(e) => {
+                                                            const updated = [...textbooks];
+                                                            updated[idx].year = e.target.value;
+                                                            setTextbooks(updated);
+                                                        }}
+                                                    />
+                                                </div>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
 
-                                <div className="card border p-3 mb-4 rounded-3">
+                                {/* REFERENCE BOOKS */}
+                                <div className="card border p-3 mb-4 rounded-3 shadow-sm">
                                     <div className="d-flex justify-content-between align-items-center mb-2">
                                         <h6 className="fw-bold mb-0 text-primary">Reference Books (Maximum 2)</h6>
-                                        <button type="button" className="btn btn-sm btn-outline-primary" disabled={referenceBooks.length >= 2} onClick={() => setReferenceBooks([...referenceBooks, ""])}>+ Add Reference Book</button>
+                                        <button
+                                            type="button"
+                                            className="btn btn-sm btn-outline-primary"
+                                            disabled={referenceBooks.length >= 2}
+                                            onClick={() => setReferenceBooks([...referenceBooks, { title: "", author: "", edition: "", publisher: "", year: "" }])}
+                                        >
+                                            + Add Reference Book
+                                        </button>
                                     </div>
                                     {referenceBooks.map((rb, idx) => (
-                                        <div key={idx} className="input-group mb-2">
-                                            <span className="input-group-text small">#{idx + 1}</span>
-                                            <input type="text" className="form-control form-control-sm" placeholder="Author, “Book Title”, Edition, Publisher, Year." value={rb} onChange={(e) => {
-                                                const r = [...referenceBooks]; r[idx] = e.target.value; setReferenceBooks(r);
-                                            }} />
-                                            <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => setReferenceBooks(referenceBooks.filter((_, i) => i !== idx))}>
-                                                <i className="bi bi-x"></i>
-                                            </button>
+                                        <div key={idx} className="border p-3 rounded mb-2 bg-light-subtle">
+                                            <div className="d-flex justify-content-between align-items-center mb-2">
+                                                <strong className="text-secondary small">Reference Book #{idx + 1}</strong>
+                                                <button type="button" className="btn btn-sm btn-outline-danger py-0 px-2" onClick={() => setReferenceBooks(referenceBooks.filter((_, i) => i !== idx))}>
+                                                    Remove
+                                                </button>
+                                            </div>
+                                            <div className="row g-2">
+                                                <div className="col-md-6">
+                                                    <label className="form-label small text-muted mb-0">Book Title</label>
+                                                    <input
+                                                        type="text"
+                                                        className="form-control form-control-sm"
+                                                        placeholder="Title of reference book..."
+                                                        value={rb.title || ""}
+                                                        onChange={(e) => {
+                                                            const updated = [...referenceBooks];
+                                                            updated[idx].title = e.target.value;
+                                                            setReferenceBooks(updated);
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div className="col-md-6">
+                                                    <label className="form-label small text-muted mb-0">Author(s)</label>
+                                                    <input
+                                                        type="text"
+                                                        className="form-control form-control-sm"
+                                                        placeholder="Author(s)..."
+                                                        value={rb.author || ""}
+                                                        onChange={(e) => {
+                                                            const updated = [...referenceBooks];
+                                                            updated[idx].author = e.target.value;
+                                                            setReferenceBooks(updated);
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div className="col-md-4">
+                                                    <label className="form-label small text-muted mb-0">Edition</label>
+                                                    <input
+                                                        type="text"
+                                                        className="form-control form-control-sm"
+                                                        placeholder="e.g. 2nd Edition"
+                                                        value={rb.edition || ""}
+                                                        onChange={(e) => {
+                                                            const updated = [...referenceBooks];
+                                                            updated[idx].edition = e.target.value;
+                                                            setReferenceBooks(updated);
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div className="col-md-5">
+                                                    <label className="form-label small text-muted mb-0">Publisher</label>
+                                                    <input
+                                                        type="text"
+                                                        className="form-control form-control-sm"
+                                                        placeholder="Publisher..."
+                                                        value={rb.publisher || ""}
+                                                        onChange={(e) => {
+                                                            const updated = [...referenceBooks];
+                                                            updated[idx].publisher = e.target.value;
+                                                            setReferenceBooks(updated);
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div className="col-md-3">
+                                                    <label className="form-label small text-muted mb-0">Year</label>
+                                                    <input
+                                                        type="text"
+                                                        className="form-control form-control-sm"
+                                                        placeholder="e.g. 2020"
+                                                        value={rb.year || ""}
+                                                        onChange={(e) => {
+                                                            const updated = [...referenceBooks];
+                                                            updated[idx].year = e.target.value;
+                                                            setReferenceBooks(updated);
+                                                        }}
+                                                    />
+                                                </div>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
 
-                                <div className="card border p-3 mb-3 rounded-3">
-                                    <div className="d-flex justify-content-between align-items-center mb-2">
-                                        <h6 className="fw-bold mb-0 text-primary">Online Resources (Maximum 3)</h6>
-                                        <button type="button" className="btn btn-sm btn-outline-primary" disabled={onlineResources.length >= 3} onClick={() => setOnlineResources([...onlineResources, ""])}>+ Add Resource</button>
-                                    </div>
-                                    {onlineResources.map((res, idx) => (
-                                        <div key={idx} className="input-group mb-2">
-                                            <span className="input-group-text small">#{idx + 1}</span>
-                                            <input type="url" className="form-control form-control-sm" placeholder="https://..." value={res} onChange={(e) => {
-                                                const o = [...onlineResources]; o[idx] = e.target.value; setOnlineResources(o);
-                                            }} />
-                                            <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => setOnlineResources(onlineResources.filter((_, i) => i !== idx))}>
-                                                <i className="bi bi-x"></i>
-                                            </button>
+                                {/* REFERENCE LINKS / ONLINE RESOURCES (MAX 3) */}
+                                <div className="card border p-3 mb-4 rounded-3 shadow-sm">
+                                    <div className="d-flex justify-content-between align-items-center mb-3">
+                                        <div>
+                                            <h6 className="fw-bold mb-0 text-primary">
+                                                <i className="bi bi-link-45deg me-1"></i> Reference Links & Online Resources
+                                            </h6>
+                                            <small className="text-muted">
+                                                Add up to <strong>3</strong> links • Platform, Topic (Max 30 words), and verified URL.
+                                            </small>
                                         </div>
-                                    ))}
+                                        <button
+                                            type="button"
+                                            className="btn btn-sm btn-outline-primary"
+                                            disabled={onlineResources.length >= 3}
+                                            onClick={() => setOnlineResources([...onlineResources, { platform: "", topic: "", url: "" }])}
+                                            title={onlineResources.length >= 3 ? "Maximum 3 links reached" : "Add Reference Link"}
+                                        >
+                                            <i className="bi bi-plus-lg me-1"></i> Add Link ({onlineResources.length}/3)
+                                        </button>
+                                    </div>
+
+                                    {onlineResources.map((res, idx) => {
+                                        const words = countWords(res.topic);
+                                        const urlValid = res.url?.trim() ? isValidUrl(res.url) : null;
+
+                                        return (
+                                            <div key={idx} className="border rounded-3 p-3 mb-3 bg-light-subtle shadow-sm">
+                                                <div className="d-flex justify-content-between align-items-center mb-2 border-bottom pb-2">
+                                                    <span className="badge bg-primary-subtle text-primary fw-bold px-2 py-1">
+                                                        Reference Link #{idx + 1}
+                                                    </span>
+                                                    {onlineResources.length > 1 && (
+                                                        <button
+                                                            type="button"
+                                                            className="btn btn-sm btn-outline-danger py-0 px-2"
+                                                            onClick={() => setOnlineResources(onlineResources.filter((_, i) => i !== idx))}
+                                                        >
+                                                            <i className="bi bi-trash me-1"></i> Remove
+                                                        </button>
+                                                    )}
+                                                </div>
+
+                                                <div className="row g-2 align-items-start">
+                                                    <div className="col-md-3">
+                                                        <label className="form-label small fw-semibold text-muted mb-1">
+                                                            Platform / Source *
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            className="form-control form-control-sm"
+                                                            placeholder="e.g. Coursera, Simplilearn, NPTEL"
+                                                            value={res.platform || ""}
+                                                            onChange={(e) => {
+                                                                const updated = [...onlineResources];
+                                                                updated[idx].platform = e.target.value;
+                                                                setOnlineResources(updated);
+                                                            }}
+                                                        />
+                                                    </div>
+
+                                                    <div className="col-md-5">
+                                                        <div className="d-flex justify-content-between align-items-center mb-1">
+                                                            <label className="form-label small fw-semibold text-muted mb-0">
+                                                                Topic Description
+                                                            </label>
+                                                            <span className={`small ${words > 30 ? "text-danger fw-bold" : "text-muted"}`} style={{ fontSize: "0.75rem" }}>
+                                                                {words} / 30 words
+                                                            </span>
+                                                        </div>
+                                                        <input
+                                                            type="text"
+                                                            className={`form-control form-control-sm ${words > 30 ? "is-invalid border-danger" : ""}`}
+                                                            placeholder="Enter topic name (Max 30 words)..."
+                                                            value={res.topic || ""}
+                                                            onChange={(e) => {
+                                                                const updated = [...onlineResources];
+                                                                updated[idx].topic = e.target.value;
+                                                                setOnlineResources(updated);
+                                                            }}
+                                                        />
+                                                        {words > 30 && (
+                                                            <small className="text-danger d-block mt-1" style={{ fontSize: "0.75rem" }}>
+                                                                Topic exceeds the 30-word limit! Please shorten it.
+                                                            </small>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="col-md-4">
+                                                        <div className="d-flex justify-content-between align-items-center mb-1">
+                                                            <label className="form-label small fw-semibold text-muted mb-0">
+                                                                Link / URL *
+                                                            </label>
+                                                            {urlValid !== null && (
+                                                                <span className={`small fw-semibold ${urlValid ? "text-success" : "text-danger"}`} style={{ fontSize: "0.75rem" }}>
+                                                                    {urlValid ? <><i className="bi bi-check-circle me-1"></i>Valid Link</> : <><i className="bi bi-x-circle me-1"></i>Invalid URL</>}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <input
+                                                            type="url"
+                                                            className={`form-control form-control-sm ${urlValid === false ? "is-invalid border-danger" : urlValid === true ? "is-valid border-success" : ""}`}
+                                                            placeholder="https://www.coursera.org/..."
+                                                            value={res.url || ""}
+                                                            onChange={(e) => {
+                                                                const updated = [...onlineResources];
+                                                                updated[idx].url = e.target.value;
+                                                                setOnlineResources(updated);
+                                                            }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         )}
                     </div>
 
-                    {/* FOOTER ACTIONS */}
+                    {/* MODAL FOOTER */}
                     <div className="modal-footer d-flex justify-content-between bg-light py-2 px-4">
                         <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>Close</button>
 
                         <div className="d-flex align-items-center gap-2">
-                            {/* STRICTLY ADMIN-ONLY REVIEW ACTIONS */}
-                            {!isEditMode && isAdmin && (currentStatus === "UPLOADED" || currentStatus === "APPROVED") && (
+                            {!isEditMode && isRealAdmin && (currentStatus === "UPLOADED" || currentStatus === "APPROVED") && (
                                 <>
                                     {showRejectInput ? (
                                         <div className="d-flex gap-2 align-items-center">
@@ -924,10 +1388,7 @@ export default function TextSyllabusModal({
                                             <button
                                                 type="button"
                                                 className="btn btn-sm btn-light"
-                                                onClick={() => {
-                                                    setShowRejectInput(false);
-                                                    setRejectRemark("");
-                                                }}
+                                                onClick={() => setShowRejectInput(false)}
                                             >
                                                 Cancel
                                             </button>
@@ -958,7 +1419,6 @@ export default function TextSyllabusModal({
                                 </>
                             )}
 
-                            {/* EDIT MODE SUBMIT / DRAFT BUTTONS */}
                             {isEditMode && (
                                 <div className="d-flex gap-2">
                                     <button
