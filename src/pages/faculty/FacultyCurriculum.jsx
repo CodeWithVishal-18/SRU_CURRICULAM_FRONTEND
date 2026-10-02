@@ -397,6 +397,43 @@ function FacultyCurriculum() {
         };
     };
 
+    // Detect swappable symbols (*, #, $) across Semester 1 and 2 courses & electives
+    const sem2SwappableNotes = useMemo(() => {
+        const sem1And2 = curricula.filter((s) => Number(s.semester) === 1 || Number(s.semester) === 2);
+        let hasStar = false;
+        let hasHash = false;
+        let hasDollar = false;
+
+        sem1And2.forEach((sem) => {
+            (sem.courses || []).forEach((c) => {
+                const name = (c.courseName || "").trim();
+                if (name.endsWith("*")) hasStar = true;
+                if (name.endsWith("#")) hasHash = true;
+                if (name.endsWith("$")) hasDollar = true;
+            });
+            (sem.electiveGroups || []).forEach((g) => {
+                const name = (g.name || "").trim();
+                if (name.endsWith("*")) hasStar = true;
+                if (name.endsWith("#")) hasHash = true;
+                if (name.endsWith("$")) hasDollar = true;
+
+                const subs = subjects[g.id] || [];
+                subs.forEach((s) => {
+                    const sName = (s.courseName || "").trim();
+                    if (sName.endsWith("*")) hasStar = true;
+                    if (sName.endsWith("#")) hasHash = true;
+                    if (sName.endsWith("$")) hasDollar = true;
+                });
+            });
+        });
+
+        const notes = [];
+        if (hasStar) notes.push("* SWAPPABLE BETWEEN I AND II SEMESTER");
+        if (hasHash) notes.push("# SWAPPABLE BETWEEN I AND II SEMESTER");
+        if (hasDollar) notes.push("$ SWAPPABLE BETWEEN I AND II SEMESTER");
+        return notes;
+    }, [curricula, subjects]);
+
     const getSyllabusStatus = (item) => {
         return String(item?.syllabusStatus || item?.status || "NOT_UPLOADED").toUpperCase();
     };
@@ -590,8 +627,15 @@ function FacultyCurriculum() {
                         const track2Credits = track2Items.reduce((s, x) => s + getCredit(x.data), 0);
                         const totalHoursTrack2 = track2Lecture + track2Tutorial + track2Practical;
 
-                        const maxTrackHours = Math.max(totalHoursTrack1, totalHoursTrack2);
-                        const isHoursCrossingLimit = maxTrackHours >= 34;
+                        // -------------------------------------------------------------------------
+                        // RULES FOR BLINKING ALERT ICON:
+                        // 1. NEVER blink for the last semester (Sem 8 for UG, Sem 4 for PG)
+                        // 2. In 7th sem (UG) or 3rd sem (PG): ONLY count Track 1 (before OR), ignore Track 2
+                        // -------------------------------------------------------------------------
+                        const currentSemNumber = Number(curriculum.semester);
+                        const isFinalSemester = currentSemNumber === Number(maxSemesters);
+                        const effectiveContactHours = totalHoursTrack1;
+                        const isHoursCrossingLimit = !isFinalSemester && effectiveContactHours >= 34;
 
                         return (
                             <div key={curriculum.semester} className="card border-0 shadow-sm mb-4">
@@ -604,10 +648,10 @@ function FacultyCurriculum() {
                                             {isHoursCrossingLimit && (
                                                 <span
                                                     className="blink-fast-red fs-5"
-                                                    title="Total hours is crossing 34"
+                                                    title={`Total hours is crossing 34 (${formatNumber(effectiveContactHours)} hrs/week)`}
                                                     onClick={() =>
                                                         toast.warning(
-                                                            `Total hours is crossing 34 (Total: ${formatNumber(maxTrackHours)} hrs/week)`
+                                                            `Total hours is crossing 34 (Total: ${formatNumber(effectiveContactHours)} hrs/week)`
                                                         )
                                                     }
                                                 >
@@ -804,6 +848,21 @@ function FacultyCurriculum() {
                                         </tbody>
                                     </table>
                                 </div>
+
+                                {/* CONDITIONAL SWAPPABLE FOOTNOTES AFTER SEMESTER 2 */}
+                                {Number(curriculum.semester) === 2 && sem2SwappableNotes.length > 0 && (
+                                    <div className="px-3 py-2 bg-light border-top text-start">
+                                        {sem2SwappableNotes.map((note, idx) => (
+                                            <div
+                                                key={idx}
+                                                className="fst-italic text-danger fw-semibold"
+                                                style={{ fontSize: "0.78rem" }}
+                                            >
+                                                {note}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         );
                     })}

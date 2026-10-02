@@ -60,7 +60,6 @@ export async function downloadCompleteCurriculumBook({
     const progTitle = programName ? `(${programName})` : `(${programCode})`;
     const fullProgramHeader = `${progTitle}`.trim();
 
-    // Normalizes group names: e.g. "Open Elective 1" & "Open Elective 2" -> "Open Electives"
     const normalizeGroupTitle = (name = "", electiveType = "") => {
         let clean = name
             .replace(/[\s\-_–—]+(I{1,3}|IV|V|VI|VII|VIII|\d+)\b/gi, "")
@@ -77,7 +76,6 @@ export async function downloadCompleteCurriculumBook({
         return clean || name || "Electives";
     };
 
-    // Separates main courses from alternative ("OR") courses without merging
     const getSemesterTracks = (sem) => {
         const semNum = Number(sem.semester);
         const courses = (sem.courses || []).filter((c) => {
@@ -109,7 +107,45 @@ export async function downloadCompleteCurriculumBook({
         };
     };
 
-    // Consolidate Electives into unique pools and deduplicate by courseCode
+    // Detect swappable symbols (*, #, $) across Semester 1 and 2 courses
+    const detectSwappableNotesForSem2 = () => {
+        const sem1And2 = curricula.filter((s) => Number(s.semester) === 1 || Number(s.semester) === 2);
+        let hasStar = false;
+        let hasHash = false;
+        let hasDollar = false;
+
+        sem1And2.forEach((sem) => {
+            (sem.courses || []).forEach((c) => {
+                const name = (c.courseName || "").trim();
+                if (name.endsWith("*")) hasStar = true;
+                if (name.endsWith("#")) hasHash = true;
+                if (name.endsWith("$")) hasDollar = true;
+            });
+            (sem.electiveGroups || []).forEach((g) => {
+                const name = (g.name || "").trim();
+                if (name.endsWith("*")) hasStar = true;
+                if (name.endsWith("#")) hasHash = true;
+                if (name.endsWith("$")) hasDollar = true;
+
+                const subs = subjectsMap[g.id] || [];
+                subs.forEach((s) => {
+                    const sName = (s.courseName || "").trim();
+                    if (sName.endsWith("*")) hasStar = true;
+                    if (sName.endsWith("#")) hasHash = true;
+                    if (sName.endsWith("$")) hasDollar = true;
+                });
+            });
+        });
+
+        const notes = [];
+        if (hasStar) notes.push("* SWAPPABLE BETWEEN I AND II SEMESTER");
+        if (hasHash) notes.push("# SWAPPABLE BETWEEN I AND II SEMESTER");
+        if (hasDollar) notes.push("$ SWAPPABLE BETWEEN I AND II SEMESTER");
+        return notes;
+    };
+
+    const sem2SwappableNotes = detectSwappableNotesForSem2();
+
     const consolidatedElectivePools = {};
     curricula.forEach((sem) => {
         (sem.electiveGroups || []).forEach((grp) => {
@@ -125,7 +161,6 @@ export async function downloadCompleteCurriculumBook({
             const subs = subjectsMap[grp.id] || [];
             subs.forEach((sub) => {
                 const code = String(sub.courseCode || "").trim().toUpperCase();
-                // Ensure all subjects (including EEE in EEE curriculum) are added
                 if (code && !consolidatedElectivePools[poolName].subjectsByCode.has(code)) {
                     consolidatedElectivePools[poolName].subjectsByCode.set(code, sub);
                 }
@@ -133,7 +168,6 @@ export async function downloadCompleteCurriculumBook({
         });
     });
 
-    // Flexible Courses definition
     const flexibleCourses = [
         { code: "25HUM202CR401", title: "Industry Certification", l: 2, r: 0, p: 2, c: 3 },
         { code: "25HUM300CR402", title: "Professional Skill Development", l: 3, r: 0, p: 0, c: 3 },
@@ -201,7 +235,7 @@ export async function downloadCompleteCurriculumBook({
                 margin-bottom: 12px;
             }
             .cover-meta {
-                font-size: 14pt;
+                font-size: 12pt;
                 color: #1e293b;
                 display: flex;
                 justify-content: center;
@@ -236,7 +270,7 @@ export async function downloadCompleteCurriculumBook({
             table.curriculum-table {
                 width: 100%;
                 border-collapse: collapse;
-                margin-bottom: 10px;
+                margin-bottom: 6px;
                 font-size: 8.8pt;
             }
             table.curriculum-table th, table.curriculum-table td {
@@ -247,6 +281,15 @@ export async function downloadCompleteCurriculumBook({
             table.curriculum-table th {
                 background-color: #f1f5f9;
                 font-weight: 600;
+            }
+            .swappable-note {
+                color: #dc3545;
+                font-style: italic;
+                font-size: 8pt;
+                font-weight: 600;
+                margin-top: 3px;
+                margin-bottom: 2px;
+                text-align: left;
             }
             table.syllabus-meta-table {
                 width: 100%;
@@ -298,13 +341,14 @@ export async function downloadCompleteCurriculumBook({
             </div>
         </div>
 
-        <!-- 1. SEMESTER-WISE TABLES (CONTINUOUS, STATUS REMOVED) -->
+        <!-- 1. SEMESTER-WISE TABLES -->
         ${curricula.map((sem) => {
             const { hasAltTrack, track1Courses, track1Electives, track2Courses } = getSemesterTracks(sem);
             if (track1Courses.length === 0 && track1Electives.length === 0 && track2Courses.length === 0) return "";
 
             let t1L = 0, t1R = 0, t1P = 0, t1C = 0;
             let t2L = 0, t2R = 0, t2P = 0, t2C = 0;
+            const isSem2 = Number(sem.semester) === 2;
 
             return `
             <div class="semester-block">
@@ -327,7 +371,7 @@ export async function downloadCompleteCurriculumBook({
                         </tr>
                     </thead>
                     <tbody>
-                        <!-- TRACK 1: MAIN COURSES -->
+                        <!-- TRACK 1 -->
                         ${track1Courses.map((c, idx) => {
                             t1L += Number(c.lecture) || 0;
                             t1R += Number(c.tutorial) || 0;
@@ -347,7 +391,7 @@ export async function downloadCompleteCurriculumBook({
                             `;
                         }).join("")}
 
-                        <!-- TRACK 1: ELECTIVE SLOTS -->
+                        <!-- TRACK 1 ELECTIVES -->
                         ${track1Electives.map((g, gIdx) => {
                             t1L += Number(g.lecture) || 0;
                             t1R += Number(g.tutorial) || 0;
@@ -412,11 +456,18 @@ export async function downloadCompleteCurriculumBook({
                         ` : ""}
                     </tbody>
                 </table>
+
+                <!-- SWAPPABLE NOTES PRINTED ONLY AFTER SEMESTER 2 -->
+                ${isSem2 && sem2SwappableNotes.length > 0 ? `
+                    <div style="margin-top: 4px; padding-left: 4px;">
+                        ${sem2SwappableNotes.map(note => `<div class="swappable-note">${note}</div>`).join("")}
+                    </div>
+                ` : ""}
             </div>
             `;
         }).join("")}
 
-        <!-- 2. CONSOLIDATED ELECTIVES (NO SEMESTER IN HEADING, CONSOLIDATED BY POOL) -->
+        <!-- 2. CONSOLIDATED ELECTIVES -->
         <div class="semester-block" style="margin-top: 25px;">
             <div class="section-header">Elective Groups & Buckets - ${fullProgramHeader}</div>
             ${Object.values(consolidatedElectivePools).map((pool) => {
@@ -459,7 +510,7 @@ export async function downloadCompleteCurriculumBook({
                 `;
             }).join("")}
 
-            <!-- 2b. FLEXIBLE COURSES & SPECIAL CASES SECTION AT THE END OF ELECTIVES -->
+            <!-- 2b. FLEXIBLE COURSES & SPECIAL CASES -->
             <div style="margin-top: 25px; margin-bottom: 20px;">
                 <table class="curriculum-table" style="margin-bottom: 0;">
                     <thead>
@@ -502,7 +553,7 @@ export async function downloadCompleteCurriculumBook({
             </div>
         </div>
 
-        <!-- 3. DETAILED SYLLABI (DEDUPLICATED BY COURSE CODE) -->
+        <!-- 3. DETAILED SYLLABI -->
         <div class="syllabus-page-break"></div>
         <div class="section-header" style="margin-bottom: 18px;">
             Detailed Syllabi - ${fullProgramHeader}
@@ -512,7 +563,6 @@ export async function downloadCompleteCurriculumBook({
             const semCourses = sem.courses || [];
             const semElectives = sem.electiveGroups || [];
 
-            // Core courses
             const courseSyllabiHtml = semCourses.map((course) => {
                 const code = String(course.courseCode || "").trim().toUpperCase();
                 if (!code || printedSyllabusCodes.has(code)) return "";
@@ -602,7 +652,6 @@ export async function downloadCompleteCurriculumBook({
                 `;
             }).join("");
 
-            // Elective courses
             const electiveSyllabiHtml = semElectives.map((grp) => {
                 const subs = subjectsMap[grp.id] || [];
                 return subs.map((sub) => {
