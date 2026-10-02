@@ -444,7 +444,7 @@ export default function TextSyllabusModal({
             </head>
             <body>
                 <div class="header-banner">
-                    <h4>SR UNIVERSITY</h4>
+                    <h4>SR UNIVERSITY, WARANGAL</h4>
                     ${programHeader ? `<h5>${programHeader}</h5>` : ""}
                 </div>
 
@@ -929,7 +929,7 @@ export default function TextSyllabusModal({
                                             <div>
                                                 <h6 className="fw-bold mb-0 text-primary">Unit-Wise Syllabus (Theory)</h6>
                                                 <small className="text-muted">
-                                                    Total Topics: <strong className={currentTheoryTopicsCount === targetTheoryTopics ? "text-success" : "text-danger"}>{currentTheoryTopicsCount} / {targetTheoryTopics}</strong> (Must equal L × 12) • Units: <strong>{units.length} / 5</strong>
+                                                    Total Sessions: <strong className={currentTheoryTopicsCount === targetTheoryTopics ? "text-success" : "text-danger"}>{currentTheoryTopicsCount} / {targetTheoryTopics}</strong> (Must equal L × 12) • Units: <strong>{units.length} / 5</strong>
                                                 </small>
                                             </div>
                                             <button
@@ -961,7 +961,7 @@ export default function TextSyllabusModal({
                                                                 <span className="input-group-text small fw-bold bg-light" style={{ minWidth: "45px", justifyContent: "center" }}>
                                                                     {sequentialTopicNumber}
                                                                 </span>
-                                                                <input type="text" className="form-control form-control-sm" placeholder={`Topic description for topic #${sequentialTopicNumber}...`} value={top} onChange={(e) => {
+                                                                <input type="text" className="form-control form-control-sm" placeholder={`Session description for topic #${sequentialTopicNumber}...`} value={top} onChange={(e) => {
                                                                     const u = [...units]; u[uIdx].topics[tIdx] = e.target.value; setUnits(u);
                                                                 }} />
                                                                 <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => handleRemoveTopicFromUnit(uIdx, tIdx)}>
@@ -996,7 +996,7 @@ export default function TextSyllabusModal({
                                             <div>
                                                 <h6 className="fw-bold mb-0 text-primary">Recitation / Tutorial Topics</h6>
                                                 <small className="text-muted">
-                                                    Topics: <strong className={recitations.length === targetRecitationTopics ? "text-success" : "text-danger"}>{recitations.length} / {targetRecitationTopics}</strong> (Must equal R × 12)
+                                                    Sessions: <strong className={recitations.length === targetRecitationTopics ? "text-success" : "text-danger"}>{recitations.length} / {targetRecitationTopics}</strong> (Must equal R × 12)
                                                 </small>
                                             </div>
                                             <button type="button" className="btn btn-sm btn-outline-primary" disabled={recitations.length >= targetRecitationTopics} onClick={() => setRecitations([...recitations, ""])}>+ Add Topic</button>
@@ -1004,7 +1004,7 @@ export default function TextSyllabusModal({
                                         {recitations.map((rec, rIdx) => (
                                             <div key={rIdx} className="input-group mb-2">
                                                 <span className="input-group-text small fw-bold">{rIdx + 1}</span>
-                                                <input type="text" className="form-control form-control-sm" placeholder="Recitation topic..." value={rec} onChange={(e) => {
+                                                <input type="text" className="form-control form-control-sm" placeholder="Recitation Sessions..." value={rec} onChange={(e) => {
                                                     const r = [...recitations]; r[rIdx] = e.target.value; setRecitations(r);
                                                 }} />
                                                 <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => setRecitations(recitations.filter((_, idx) => idx !== rIdx))}>
@@ -1024,7 +1024,7 @@ export default function TextSyllabusModal({
                                             <div>
                                                 <h6 className="fw-bold mb-0 text-primary">Lab / Product Components</h6>
                                                 <small className="text-muted">
-                                                    Topics: <strong className={labComponents.length === targetLabTopics ? "text-success" : "text-danger"}>{labComponents.length} / {targetLabTopics}</strong> (Must equal (P/2) × 12)
+                                                    Sessions: <strong className={labComponents.length === targetLabTopics ? "text-success" : "text-danger"}>{labComponents.length} / {targetLabTopics}</strong> (Must equal (P/2) × 12)
                                                 </small>
                                             </div>
                                             <button type="button" className="btn btn-sm btn-outline-primary" disabled={labComponents.length >= targetLabTopics} onClick={() => setLabComponents([...labComponents, ""])}>+ Add Component</button>
