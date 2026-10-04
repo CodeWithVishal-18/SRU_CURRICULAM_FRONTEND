@@ -10,12 +10,10 @@ function CourseStructure() {
     const [regulations, setRegulations] = useState([]);
     const [departments, setDepartments] = useState([]);
     const [allPrograms, setAllPrograms] = useState([]);
-
     const [regulationCode, setRegulationCode] = useState("");
     const [departmentCode, setDepartmentCode] = useState("");
     const [programCode, setProgramCode] = useState("");
     const [file, setFile] = useState(null);
-
     const [loading, setLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
 
@@ -51,7 +49,6 @@ function CourseStructure() {
         if (!departmentCode || !selectedRegulation) return [];
         const normDept = departmentCode.trim().toUpperCase();
         const regLevel = selectedRegulation.level || "UG";
-
         return allPrograms.filter(
             (p) =>
                 (p.departmentCode || "").toUpperCase() === normDept &&
@@ -105,7 +102,6 @@ function CourseStructure() {
             toast.error("Please select an Excel file");
             return;
         }
-
         try {
             setUploading(true);
             const level = selectedRegulation?.level || "UG";
@@ -135,7 +131,6 @@ function CourseStructure() {
                     Upload curriculum Excel sheets linked to regulation, department, and degree programme.
                 </p>
             </div>
-
             <div className="card border-0 shadow-sm col-xl-10 mx-auto">
                 <div className="card-body p-4 p-lg-5">
                     {loading ? (
@@ -146,7 +141,7 @@ function CourseStructure() {
                     ) : (
                         <form onSubmit={handleUpload}>
                             <div className="row g-4">
-                                {/* 1. REGULATION (Has Level UG/PG) */}
+                                {/* 1. REGULATION */}
                                 <div className="col-12 col-md-6">
                                     <label className="form-label fw-semibold">
                                         Regulation <span className="text-danger">*</span>
@@ -186,7 +181,7 @@ function CourseStructure() {
                                     </select>
                                 </div>
 
-                                {/* 3. DEGREE PROGRAMME (Automatically filtered by Dept + Regulation Level) */}
+                                {/* 3. DEGREE PROGRAMME (WITH SPECIALIZATION) */}
                                 <div className="col-12">
                                     <label className="form-label fw-semibold">
                                         Degree Programme <span className="text-danger">*</span>
@@ -205,11 +200,16 @@ function CourseStructure() {
                                                 ? `No ${selectedRegulation?.level || "UG"} programmes found under this department`
                                                 : "Select Programme"}
                                         </option>
-                                        {filteredPrograms.map((p) => (
-                                            <option key={p.code} value={p.code}>
-                                                {p.name} ({p.totalSemesters} Semesters)
-                                            </option>
-                                        ))}
+                                        {filteredPrograms.map((p) => {
+                                            const formattedTitle = p.specialization
+                                                ? `${p.name} (${p.specialization})`
+                                                : p.name;
+                                            return (
+                                                <option key={p.code} value={p.code}>
+                                                    {formattedTitle} ({p.totalSemesters} Semesters)
+                                                </option>
+                                            );
+                                        })}
                                     </select>
                                 </div>
                             </div>
@@ -217,11 +217,16 @@ function CourseStructure() {
                             {/* TARGET SUMMARY BANNER */}
                             {selectedProgram && (
                                 <div className="alert alert-light border mt-4">
-                                    <div className="d-flex align-items-center justify-content-between">
+                                    <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
                                         <div>
                                             <span className="badge bg-primary me-2">{selectedProgram.level}</span>
                                             <strong>{selectedProgram.name}</strong>
-                                            <span className="text-muted ms-2">
+                                            {selectedProgram.specialization && (
+                                                <span className="badge bg-info-subtle text-info-emphasis border border-info-subtle ms-2">
+                                                    Specialization: {selectedProgram.specialization}
+                                                </span>
+                                            )}
+                                            <span className="text-muted ms-3">
                                                 Duration: <strong>{selectedProgram.totalSemesters} Semesters</strong>
                                             </span>
                                         </div>

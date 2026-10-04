@@ -5,6 +5,7 @@ export async function downloadCompleteCurriculumBook({
     departmentCode,
     programCode,
     programName,
+    specialization,
     curricula = [],
     subjectsMap = {},
 }) {
@@ -57,8 +58,44 @@ export async function downloadCompleteCurriculumBook({
         return l + 0.5 * t + 0.5 * p;
     };
 
-    const progTitle = programName ? `(${programName})` : `(${programCode})`;
-    const fullProgramHeader = `${progTitle}`.trim();
+    const formatBookCitation = (b) => {
+        if (!b) return "";
+        if (typeof b === "string") {
+            try {
+                const parsed = JSON.parse(b);
+                if (typeof parsed === "object") return formatBookCitation(parsed);
+            } catch {
+                return b;
+            }
+        }
+        const parts = [];
+        if (b.author?.trim()) parts.push(b.author.trim());
+        if (b.title?.trim()) parts.push(`“${b.title.trim()}”`);
+        if (b.edition?.trim()) parts.push(b.edition.trim());
+        if (b.publisher?.trim()) parts.push(b.publisher.trim());
+        if (b.year?.trim()) parts.push(b.year.trim());
+        return parts.join(", ");
+    };
+
+    const parseResource = (raw) => {
+        if (!raw) return null;
+        if (typeof raw === "object") return raw;
+        try {
+            const parsed = JSON.parse(raw);
+            if (typeof parsed === "object") return parsed;
+        } catch {}
+        return { platform: "Online Resource", topic: "", url: raw };
+    };
+
+    // Header formats including Specialization in parenthesis if available
+    const cleanProgramName = (programName || programCode || "").trim();
+    const cleanSpec = (specialization || "").trim();
+
+    const titleWithSpecialization = cleanSpec
+        ? `${cleanProgramName} (${cleanSpec})`
+        : cleanProgramName;
+
+    const fullProgramHeader = `${titleWithSpecialization}`.trim();
 
     const normalizeGroupTitle = (name = "", electiveType = "") => {
         let clean = name
@@ -235,11 +272,12 @@ export async function downloadCompleteCurriculumBook({
                 margin-bottom: 12px;
             }
             .cover-meta {
-                font-size: 12pt;
+                font-size: 14pt;
                 color: #1e293b;
                 display: flex;
+                flex-wrap: wrap;
                 justify-content: center;
-                gap: 25px;
+                gap: 20px;
             }
             .semester-block {
                 margin-bottom: 20px;
@@ -319,6 +357,22 @@ export async function downloadCompleteCurriculumBook({
                 text-transform: uppercase;
                 color: #0f172a;
             }
+            .topic-list {
+                list-style-type: none;
+                padding-left: 0;
+                margin-top: 3px;
+                margin-bottom: 8px;
+            }
+            .topic-item {
+                margin-bottom: 3px;
+                display: flex;
+                align-items: flex-start;
+            }
+            .topic-num {
+                min-width: 24px;
+                font-weight: bold;
+                color: #1e293b;
+            }
             ol, ul {
                 margin-top: 3px;
                 margin-bottom: 8px;
@@ -337,7 +391,8 @@ export async function downloadCompleteCurriculumBook({
             <div class="cover-meta">
                 <div><strong>Regulation:</strong> ${regulationCode}</div>
                 <div><strong>Department:</strong> ${departmentCode}</div>
-                <div><strong>Degree Programme:</strong> ${programName || programCode}</div>
+                <div><strong>Programme:</strong> ${cleanProgramName}</div>
+                ${cleanSpec ? `<div><strong>Specialization(s):</strong> ${cleanSpec}</div>` : ""}
             </div>
         </div>
 
@@ -353,7 +408,7 @@ export async function downloadCompleteCurriculumBook({
             return `
             <div class="semester-block">
                 <div class="section-header">
-                    Semester ${sem.semester} Course Structure -${fullProgramHeader}
+                    Semester ${sem.semester} - ${fullProgramHeader}
                 </div>
                 <table class="curriculum-table">
                     <thead>
@@ -553,7 +608,7 @@ export async function downloadCompleteCurriculumBook({
             </div>
         </div>
 
-        <!-- 3. DETAILED SYLLABI -->
+        <!-- 3. DETAILED SYLLABI (CONTINUOUS NUMBERING 1, 2, 3... ACROSS UNITS) -->
         <div class="syllabus-page-break"></div>
         <div class="section-header" style="margin-bottom: 18px;">
             Detailed Syllabi - ${fullProgramHeader}
@@ -562,6 +617,34 @@ export async function downloadCompleteCurriculumBook({
         ${curricula.map((sem) => {
             const semCourses = sem.courses || [];
             const semElectives = sem.electiveGroups || [];
+
+            // Helper to render unit-wise syllabus with continuous sequential numbering
+            const renderUnitsHtml = (units, L) => {
+                if (!L || !units?.length) return "";
+                let runningSessionNumber = 1;
+
+                return `
+                <div class="syllabus-heading">Unit-Wise Syllabus (Theory - ${L * 12} Sessions)</div>${units.map((u, uIdx) => {
+                    const topicsList = u.topics || [];
+                    return `
+                    <div style="margin-bottom: 8px;">
+                        <strong style="color: #0f172a;">${u.title}</strong>
+                        <div class="topic-list" style="margin-top: 3px; padding-left: 4px;">
+                            ${topicsList.map((t) => {
+                                const currentNum = runningSessionNumber++;
+                                return `
+                                <div class="topic-item">
+                                    <span class="topic-num">${currentNum}.</span>
+                                    <span>${t}</span>
+                                </div>
+                                `;
+                            }).join("")}
+                        </div>
+                    </div>
+                    `;
+                }).join("")}
+                `;
+            };
 
             const courseSyllabiHtml = semCourses.map((course) => {
                 const code = String(course.courseCode || "").trim().toUpperCase();
@@ -575,6 +658,10 @@ export async function downloadCompleteCurriculumBook({
                 const R = Number(course.tutorial) || 0;
                 const P = Number(course.practical) || 0;
                 const C = Number(course.credits) || 0;
+
+                const parsedResources = (sData.onlineResources || [])
+                    .map(parseResource)
+                    .filter(Boolean);
 
                 return `
                 <div class="syllabus-box">
@@ -612,41 +699,52 @@ export async function downloadCompleteCurriculumBook({
                         ${(sData.courseOutcomes || []).map((co, i) => `<li><strong>CO${i + 1}:</strong> ${co}</li>`).join("")}
                     </ul>
 
-                    ${L > 0 && sData.units ? `
-                        <div class="syllabus-heading">Unit-Wise Syllabus (Theory - ${L * 12} Topics)</div>
-                        ${sData.units.map(u => `
-                            <div style="margin-bottom: 6px;">
-                                <strong>${u.title}</strong>
-                                <ul style="margin: 0; padding-left: 16px;">
-                                    ${(u.topics || []).map(t => `<li>${t}</li>`).join("")}
-                                </ul>
-                            </div>
-                        `).join("")}
-                    ` : ""}
+                    ${renderUnitsHtml(sData.units, L)}
 
                     ${R > 0 && sData.recitations?.length ? `
-                        <div class="syllabus-heading">Recitation / Tutorial Topics (${R * 12} Topics)</div>
+                        <div class="syllabus-heading">Recitation / Tutorial Topics (${R * 12} Sessions)</div>
                         <ol>${sData.recitations.map(r => `<li>${r}</li>`).join("")}</ol>
                     ` : ""}
 
                     ${P > 0 && sData.labComponents?.length ? `
-                        <div class="syllabus-heading">Lab / Product Components (${Math.round((P / 2) * 12)} Activities)</div>
+                        <div class="syllabus-heading">Lab / Product Components (${Math.round((P / 2) * 12)} Sessions)</div>
                         <ol>${sData.labComponents.map(l => `<li>${l}</li>`).join("")}</ol>
                     ` : ""}
 
                     ${sData.textbooks?.length ? `
                         <div class="syllabus-heading">Textbooks</div>
-                        <ol>${sData.textbooks.map(tb => `<li>${tb}</li>`).join("")}</ol>
+                        <ol>${sData.textbooks.map(tb => `<li>${formatBookCitation(tb)}</li>`).join("")}</ol>
                     ` : ""}
 
                     ${sData.referenceBooks?.length ? `
                         <div class="syllabus-heading">Reference Books</div>
-                        <ol>${sData.referenceBooks.map(rb => `<li>${rb}</li>`).join("")}</ol>
+                        <ol>${sData.referenceBooks.map(rb => `<li>${formatBookCitation(rb)}</li>`).join("")}</ol>
                     ` : ""}
 
-                    ${sData.onlineResources?.length ? `
-                        <div class="syllabus-heading">Online Resources</div>
-                        <ul>${sData.onlineResources.map(res => `<li><a href="${res.startsWith("http") ? res : `https://${res}`}">${res}</a></li>`).join("")}</ul>
+                    ${parsedResources.length ? `
+                        <div class="syllabus-heading">Online Resources & Reference Links</div>
+                        <table style="width: 100%; border-collapse: collapse; margin-top: 6px; margin-bottom: 8px;">
+                            <thead>
+                                <tr style="background: #f1f5f9; text-align: left;">
+                                    <th style="border: 1px solid #333; padding: 4px 6px; width: 35px; text-align: center;">#</th>
+                                    <th style="border: 1px solid #333; padding: 4px 6px; width: 120px;">Platform</th>
+                                    <th style="border: 1px solid #333; padding: 4px 6px;">Topic</th>
+                                    <th style="border: 1px solid #333; padding: 4px 6px;">Resource Link</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${parsedResources.map((res, idx) => `
+                                    <tr>
+                                        <td style="border: 1px solid #333; padding: 4px 6px; text-align: center; font-weight: bold;">${idx + 1}</td>
+                                        <td style="border: 1px solid #333; padding: 4px 6px; font-weight: 600; color: #0d6efd;">${res.platform || "Online"}</td>
+                                        <td style="border: 1px solid #333; padding: 4px 6px;">${res.topic || "-"}</td>
+                                        <td style="border: 1px solid #333; padding: 4px 6px;">
+                                            <a href="${res.url.startsWith("http") ? res.url : `https://${res.url}`}">${res.url}</a>
+                                        </td>
+                                    </tr>
+                                `).join("")}
+                            </tbody>
+                        </table>
                     ` : ""}
                 </div>
                 `;
@@ -666,6 +764,10 @@ export async function downloadCompleteCurriculumBook({
                     const R = Number(sub.tutorial) || 0;
                     const P = Number(sub.practical) || 0;
                     const C = Number(sub.credits) || 0;
+
+                    const parsedResources = (sData.onlineResources || [])
+                        .map(parseResource)
+                        .filter(Boolean);
 
                     return `
                     <div class="syllabus-box">
@@ -703,17 +805,7 @@ export async function downloadCompleteCurriculumBook({
                             ${(sData.courseOutcomes || []).map((co, i) => `<li><strong>CO${i + 1}:</strong> ${co}</li>`).join("")}
                         </ul>
 
-                        ${L > 0 && sData.units ? `
-                            <div class="syllabus-heading">Unit-Wise Syllabus (Theory)</div>
-                            ${sData.units.map(u => `
-                                <div style="margin-bottom: 6px;">
-                                    <strong>${u.title}</strong>
-                                    <ul style="margin: 0; padding-left: 16px;">
-                                        ${(u.topics || []).map(t => `<li>${t}</li>`).join("")}
-                                    </ul>
-                                </div>
-                            `).join("")}
-                        ` : ""}
+                        ${renderUnitsHtml(sData.units, L)}
 
                         ${R > 0 && sData.recitations?.length ? `
                             <div class="syllabus-heading">Recitation / Tutorial Topics</div>
@@ -727,17 +819,38 @@ export async function downloadCompleteCurriculumBook({
 
                         ${sData.textbooks?.length ? `
                             <div class="syllabus-heading">Textbooks</div>
-                            <ol>${sData.textbooks.map(tb => `<li>${tb}</li>`).join("")}</ol>
+                            <ol>${sData.textbooks.map(tb => `<li>${formatBookCitation(tb)}</li>`).join("")}</ol>
                         ` : ""}
 
                         ${sData.referenceBooks?.length ? `
                             <div class="syllabus-heading">Reference Books</div>
-                            <ol>${sData.referenceBooks.map(rb => `<li>${rb}</li>`).join("")}</ol>
+                            <ol>${sData.referenceBooks.map(rb => `<li>${formatBookCitation(rb)}</li>`).join("")}</ol>
                         ` : ""}
 
-                        ${sData.onlineResources?.length ? `
-                            <div class="syllabus-heading">Online Resources</div>
-                            <ul>${sData.onlineResources.map(res => `<li><a href="${res.startsWith("http") ? res : `https://${res}`}">${res}</a></li>`).join("")}</ul>
+                        ${parsedResources.length ? `
+                            <div class="syllabus-heading">Online Resources & Reference Links</div>
+                            <table style="width: 100%; border-collapse: collapse; margin-top: 6px; margin-bottom: 8px;">
+                                <thead>
+                                    <tr style="background: #f1f5f9; text-align: left;">
+                                        <th style="border: 1px solid #333; padding: 4px 6px; width: 35px; text-align: center;">#</th>
+                                        <th style="border: 1px solid #333; padding: 4px 6px; width: 120px;">Platform</th>
+                                        <th style="border: 1px solid #333; padding: 4px 6px;">Topic</th>
+                                        <th style="border: 1px solid #333; padding: 4px 6px;">Resource Link</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${parsedResources.map((res, idx) => `
+                                        <tr>
+                                            <td style="border: 1px solid #333; padding: 4px 6px; text-align: center; font-weight: bold;">${idx + 1}</td>
+                                            <td style="border: 1px solid #333; padding: 4px 6px; font-weight: 600; color: #0d6efd;">${res.platform || "Online"}</td>
+                                            <td style="border: 1px solid #333; padding: 4px 6px;">${res.topic || "-"}</td>
+                                            <td style="border: 1px solid #333; padding: 4px 6px;">
+                                                <a href="${res.url.startsWith("http") ? res.url : `https://${res.url}`}">${res.url}</a>
+                                            </td>
+                                        </tr>
+                                    `).join("")}
+                                </tbody>
+                            </table>
                         ` : ""}
                     </div>
                     `;

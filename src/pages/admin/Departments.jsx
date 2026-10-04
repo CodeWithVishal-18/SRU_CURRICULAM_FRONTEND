@@ -26,6 +26,7 @@ function Departments() {
     const [programModalDept, setProgramModalDept] = useState(null);
     const [newProgram, setNewProgram] = useState({
         name: "",
+        specialization: "",
         code: "",
         level: "UG",
         totalSemesters: 8,
@@ -108,11 +109,11 @@ function Departments() {
         }
     };
 
-    // Open Program Management for this department
     const handleOpenPrograms = (dept) => {
         setProgramModalDept(dept);
         setNewProgram({
             name: "",
+            specialization: "",
             code: `${dept.code}_`,
             level: "UG",
             totalSemesters: 8,
@@ -122,25 +123,34 @@ function Departments() {
     const handleCreateProgram = async (e) => {
         e.preventDefault();
         if (!newProgram.name.trim() || !newProgram.code.trim()) {
-            toast.error("Programme name and code are required");
+            toast.error("Programme title and code are required");
             return;
         }
+
         try {
             setSavingProgram(true);
-            await createProgram({
+            const payload = {
                 name: newProgram.name.trim(),
+                specialization: newProgram.specialization?.trim() || null,
                 code: newProgram.code.trim().toUpperCase(),
                 level: newProgram.level,
                 departmentCode: programModalDept.code,
                 totalSemesters: Number(newProgram.totalSemesters),
-            });
+            };
+
+            await createProgram(payload);
             toast.success("Programme added successfully");
+
+            // Reset form
             setNewProgram({
                 name: "",
+                specialization: "",
                 code: `${programModalDept.code}_`,
                 level: "UG",
                 totalSemesters: 8,
             });
+
+            // Re-fetch programs list
             const progRes = await getAllPrograms();
             setAllPrograms(progRes?.data || []);
         } catch (err) {
@@ -290,7 +300,7 @@ function Departments() {
             {/* MANAGE PROGRAMMES FOR DEPARTMENT MODAL */}
             {programModalDept && (
                 <div className="modal d-block" tabIndex="-1" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
-                    <div className="modal-dialog modal-lg modal-dialog-centered">
+                    <div className="modal-dialog modal-xl modal-dialog-centered">
                         <div className="modal-content border-0 shadow">
                             <div className="modal-header">
                                 <div>
@@ -302,31 +312,44 @@ function Departments() {
                                 <button type="button" className="btn-close" onClick={() => setProgramModalDept(null)}></button>
                             </div>
                             <div className="modal-body p-4">
-                                {/* ADD NEW PROGRAM FORM */}
+                                {/* ADD NEW PROGRAM FORM WITH SPECIALIZATION */}
                                 <form onSubmit={handleCreateProgram} className="border p-3 rounded-3 bg-light mb-4">
                                     <h6 className="fw-bold mb-3">Add New Degree Programme</h6>
-                                    <div className="row g-2">
-                                        <div className="col-12 col-md-5">
+                                    <div className="row g-2 align-items-end">
+                                        <div className="col-12 col-md-4">
+                                            <label className="form-label small fw-semibold text-muted mb-1">Programme Title *</label>
                                             <input
                                                 type="text"
                                                 className="form-control form-control-sm"
-                                                placeholder="Programme Name (e.g. BCA)"
+                                                placeholder="e.g. B.Tech - Computer Science"
                                                 value={newProgram.name}
                                                 onChange={(e) => setNewProgram({ ...newProgram, name: e.target.value })}
                                                 required
                                             />
                                         </div>
-                                        <div className="col-6 col-md-3">
+                                        <div className="col-12 col-md-3">
+                                            <label className="form-label small fw-semibold text-muted mb-1">Specialization (Optional)</label>
                                             <input
                                                 type="text"
                                                 className="form-control form-control-sm"
-                                                placeholder="Code (e.g. CSAI_BCA)"
+                                                placeholder="e.g. Artificial Intelligence"
+                                                value={newProgram.specialization}
+                                                onChange={(e) => setNewProgram({ ...newProgram, specialization: e.target.value })}
+                                            />
+                                        </div>
+                                        <div className="col-6 col-md-2">
+                                            <label className="form-label small fw-semibold text-muted mb-1">Code *</label>
+                                            <input
+                                                type="text"
+                                                className="form-control form-control-sm"
+                                                placeholder="e.g. CSAI_BTECH"
                                                 value={newProgram.code}
                                                 onChange={(e) => setNewProgram({ ...newProgram, code: e.target.value.toUpperCase() })}
                                                 required
                                             />
                                         </div>
-                                        <div className="col-6 col-md-2">
+                                        <div className="col-3 col-md-1">
+                                            <label className="form-label small fw-semibold text-muted mb-1">Level *</label>
                                             <select
                                                 className="form-select form-select-sm"
                                                 value={newProgram.level}
@@ -337,12 +360,11 @@ function Departments() {
                                                 <option value="PHD">PhD</option>
                                             </select>
                                         </div>
-                                        <div className="col-6 col-md-2">
+                                        <div className="col-3 col-md-1">
+                                            <label className="form-label small fw-semibold text-muted mb-1">Semesters *</label>
                                             <input
                                                 type="number"
                                                 className="form-control form-control-sm"
-                                                title="Total Semesters"
-                                                placeholder="Semesters (e.g. 6 or 8)"
                                                 min="1"
                                                 max="12"
                                                 value={newProgram.totalSemesters}
@@ -350,9 +372,9 @@ function Departments() {
                                                 required
                                             />
                                         </div>
-                                        <div className="col-12 mt-2 d-flex justify-content-end">
-                                            <button type="submit" className="btn btn-sm btn-primary px-3" disabled={savingProgram}>
-                                                {savingProgram ? "Adding..." : "+ Add Programme"}
+                                        <div className="col-12 col-md-1">
+                                            <button type="submit" className="btn btn-sm btn-primary w-100" disabled={savingProgram}>
+                                                {savingProgram ? "..." : "+ Add"}
                                             </button>
                                         </div>
                                     </div>
@@ -365,10 +387,11 @@ function Departments() {
                                         <thead className="table-light">
                                             <tr>
                                                 <th>#</th>
-                                                <th>Name</th>
+                                                <th>Programme Name</th>
+                                                <th>Specialization</th>
                                                 <th>Code</th>
                                                 <th>Level</th>
-                                                <th>Total Semesters</th>
+                                                <th>Semesters</th>
                                                 <th className="text-end">Action</th>
                                             </tr>
                                         </thead>
@@ -379,6 +402,15 @@ function Departments() {
                                                     <tr key={p.id || p.code}>
                                                         <td>{idx + 1}</td>
                                                         <td className="fw-semibold">{p.name}</td>
+                                                        <td>
+                                                            {p.specialization ? (
+                                                                <span className="badge bg-info-subtle text-info-emphasis border border-info-subtle">
+                                                                    {p.specialization}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-muted small">None</span>
+                                                            )}
+                                                        </td>
                                                         <td><code>{p.code}</code></td>
                                                         <td>
                                                             <span className="badge bg-primary-subtle text-primary">

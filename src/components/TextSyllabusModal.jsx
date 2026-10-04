@@ -50,9 +50,7 @@ export default function TextSyllabusModal({
     const [textbooks, setTextbooks] = useState([
         { title: "", author: "", edition: "", publisher: "", year: "" }
     ]);
-    const [referenceBooks, setReferenceBooks] = useState([
-        { title: "", author: "", edition: "", publisher: "", year: "" }
-    ]);
+    const [referenceBooks, setReferenceBooks] = useState([]);
 
     // Structured Online Resources: { platform: "", topic: "", url: "" }
     const [onlineResources, setOnlineResources] = useState([
@@ -156,7 +154,7 @@ export default function TextSyllabusModal({
                         if (parsed.textbooks?.length) {
                             setTextbooks(parsed.textbooks.map(parseBookString));
                         }
-                        if (parsed.referenceBooks?.length) {
+                        if (parsed.referenceBooks) {
                             setReferenceBooks(parsed.referenceBooks.map(parseBookString));
                         }
                         if (parsed.onlineResources?.length) {
@@ -242,17 +240,18 @@ export default function TextSyllabusModal({
         }
     };
 
+    // Strict Validation: Every marked (*) input is compulsory!
     const validate = () => {
         if (!courseType.trim()) {
-            toast.error("Please enter Course Type");
+            toast.error("Course Type is required");
             return false;
         }
         if (!prerequisite.trim()) {
-            toast.error("Please enter Pre-requisite (or 'NA')");
+            toast.error("Pre-requisite is required (enter 'NA' if none)");
             return false;
         }
         if (courseOutcomes.length < 3 || courseOutcomes.length > 5) {
-            toast.error("Course outcomes must be between 3 and 5");
+            toast.error("Course Outcomes must be between 3 and 5");
             return false;
         }
         for (let i = 0; i < courseOutcomes.length; i++) {
@@ -262,9 +261,10 @@ export default function TextSyllabusModal({
             }
         }
 
+        // Theory Units Validation
         if (L > 0) {
             if (currentTheoryTopicsCount !== targetTheoryTopics) {
-                toast.error(`Total theory topics must be exactly ${targetTheoryTopics} (currently ${currentTheoryTopicsCount})`);
+                toast.error(`Total theory sessions must be exactly ${targetTheoryTopics} (currently ${currentTheoryTopicsCount})`);
                 return false;
             }
             for (let i = 0; i < units.length; i++) {
@@ -274,62 +274,112 @@ export default function TextSyllabusModal({
                 }
                 for (let j = 0; j < units[i].topics.length; j++) {
                     if (!units[i].topics[j].trim()) {
-                        toast.error(`Topic in Unit ${i + 1} cannot be empty`);
+                        toast.error(`Session description in Unit ${i + 1} (Topic #${unitStartOffsets[i] + j + 1}) cannot be empty`);
                         return false;
                     }
                 }
             }
         }
 
+        // Recitation Topics Validation
         if (R > 0) {
             if (recitations.length !== targetRecitationTopics) {
-                toast.error(`Recitation topics must be exactly ${targetRecitationTopics} (currently ${recitations.length})`);
+                toast.error(`Recitation sessions must be exactly ${targetRecitationTopics} (currently ${recitations.length})`);
                 return false;
             }
             for (let i = 0; i < recitations.length; i++) {
                 if (!recitations[i].trim()) {
-                    toast.error(`Recitation topic #${i + 1} cannot be empty`);
+                    toast.error(`Recitation session #${i + 1} cannot be empty`);
                     return false;
                 }
             }
         }
 
+        // Lab Components Validation
         if (P > 0) {
             if (labComponents.length !== targetLabTopics) {
-                toast.error(`Lab/Product topics must be exactly ${targetLabTopics} (currently ${labComponents.length})`);
+                toast.error(`Lab sessions must be exactly ${targetLabTopics} (currently ${labComponents.length})`);
                 return false;
             }
             for (let i = 0; i < labComponents.length; i++) {
                 if (!labComponents[i].trim()) {
-                    toast.error(`Lab component #${i + 1} cannot be empty`);
+                    toast.error(`Lab activity #${i + 1} cannot be empty`);
                     return false;
                 }
             }
         }
 
-        const validTb = textbooks.filter((b) => b.title?.trim() || b.author?.trim());
-        if (validTb.length === 0) {
+        // Textbooks Validation: (Everything except edition is compulsory)
+        if (textbooks.length === 0) {
             toast.error("Please add at least 1 Textbook");
             return false;
         }
+        for (let i = 0; i < textbooks.length; i++) {
+            const tb = textbooks[i];
+            if (!tb.title?.trim()) {
+                toast.error(`Textbook #${i + 1}: Book Title is required`);
+                return false;
+            }
+            if (!tb.author?.trim()) {
+                toast.error(`Textbook #${i + 1}: Author(s) is required`);
+                return false;
+            }
+            if (!tb.publisher?.trim()) {
+                toast.error(`Textbook #${i + 1}: Publisher is required`);
+                return false;
+            }
+            if (!tb.year?.trim()) {
+                toast.error(`Textbook #${i + 1}: Publication Year is required`);
+                return false;
+            }
+        }
 
-        const validResources = onlineResources.filter((r) => r.url?.trim() || r.topic?.trim() || r.platform?.trim());
-        if (validResources.length > 3) {
+        // Reference Books Validation: (If added, all fields except edition are compulsory)
+        for (let i = 0; i < referenceBooks.length; i++) {
+            const rb = referenceBooks[i];
+            if (!rb.title?.trim()) {
+                toast.error(`Reference Book #${i + 1}: Book Title is required`);
+                return false;
+            }
+            if (!rb.author?.trim()) {
+                toast.error(`Reference Book #${i + 1}: Author(s) is required`);
+                return false;
+            }
+            if (!rb.publisher?.trim()) {
+                toast.error(`Reference Book #${i + 1}: Publisher is required`);
+                return false;
+            }
+            if (!rb.year?.trim()) {
+                toast.error(`Reference Book #${i + 1}: Publication Year is required`);
+                return false;
+            }
+        }
+
+        // Online Resources Validation: (Platform, Topic (max 30 words), and valid URL are mandatory)
+        if (onlineResources.length > 3) {
             toast.error("Maximum 3 reference links allowed");
             return false;
         }
-        for (let i = 0; i < validResources.length; i++) {
-            const res = validResources[i];
-            if (!res.url?.trim()) {
-                toast.error(`Please provide the Link/URL for Reference Link #${i + 1}`);
+        for (let i = 0; i < onlineResources.length; i++) {
+            const res = onlineResources[i];
+            if (!res.platform?.trim()) {
+                toast.error(`Reference Link #${i + 1}: Platform / Source is required (e.g., Coursera)`);
                 return false;
             }
-            if (!isValidUrl(res.url)) {
-                toast.error(`Invalid URL format in Reference Link #${i + 1}: "${res.url}".`);
+            if (!res.topic?.trim()) {
+                toast.error(`Reference Link #${i + 1}: Topic description is required`);
                 return false;
             }
             if (countWords(res.topic) > 30) {
-                toast.error(`Topic description for Reference Link #${i + 1} exceeds 30 words`);
+                toast.error(`Reference Link #${i + 1}: Topic description exceeds 30 words`);
+                return false;
+            }
+            if (!res.url?.trim()) {
+                toast.error(`Reference Link #${i + 1}: Link / URL is required`);
+                return false;
+            }
+            if (!isValidUrl(res.url)) {
+                toast.error(`Reference Link #${i + 1}: Invalid URL format: "${res.url}".`);
                 return false;
             }
         }
@@ -844,7 +894,7 @@ export default function TextSyllabusModal({
                         ) : (
                             /* EDITING / UPLOAD FORM */
                             <div>
-                                {/* EXACT TABLE HEADER WITH LRPC COLUMNS (LIKE THE PROVIDED IMAGE) */}
+                                {/* TABLE HEADER WITH LRPC COLUMNS */}
                                 <div className="border rounded-3 overflow-hidden shadow-sm mb-4 bg-white">
                                     <table className="table table-bordered mb-0 align-middle text-center">
                                         <tbody>
@@ -874,27 +924,33 @@ export default function TextSyllabusModal({
                                         </tbody>
                                     </table>
 
-                                    {/* COURSE TYPE & PRE-REQUISITE ROW */}
+                                    {/* COURSE TYPE & PRE-REQUISITE */}
                                     <div className="p-3 bg-light border-top">
                                         <div className="row g-3">
                                             <div className="col-md-6">
-                                                <label className="form-label fw-semibold small mb-1">Course Type *</label>
+                                                <label className="form-label fw-semibold small mb-1">
+                                                    Course Type <span className="text-danger">*</span>
+                                                </label>
                                                 <input
                                                     type="text"
                                                     className="form-control form-control-sm"
                                                     value={courseType}
                                                     onChange={(e) => setCourseType(e.target.value)}
                                                     placeholder="e.g. Engineering Science / Professional Core"
+                                                    required
                                                 />
                                             </div>
                                             <div className="col-md-6">
-                                                <label className="form-label fw-semibold small mb-1">Pre-requisite *</label>
+                                                <label className="form-label fw-semibold small mb-1">
+                                                    Pre-requisite <span className="text-danger">*</span>
+                                                </label>
                                                 <input
                                                     type="text"
                                                     className="form-control form-control-sm"
                                                     value={prerequisite}
                                                     onChange={(e) => setPrerequisite(e.target.value)}
                                                     placeholder="e.g. NA or course code"
+                                                    required
                                                 />
                                             </div>
                                         </div>
@@ -904,17 +960,39 @@ export default function TextSyllabusModal({
                                 {/* COURSE OUTCOMES */}
                                 <div className="card border p-3 mb-4 rounded-3 shadow-sm">
                                     <div className="d-flex justify-content-between align-items-center mb-2">
-                                        <h6 className="fw-bold mb-0 text-primary">Course Outcomes (Min 3, Max 5)</h6>
-                                        <button type="button" className="btn btn-sm btn-outline-primary" disabled={courseOutcomes.length >= 5} onClick={() => setCourseOutcomes([...courseOutcomes, ""])}>+ Add Outcome</button>
+                                        <h6 className="fw-bold mb-0 text-primary">
+                                            Course Outcomes (Min 3, Max 5) <span className="text-danger">*</span>
+                                        </h6>
+                                        <button
+                                            type="button"
+                                            className="btn btn-sm btn-outline-primary"
+                                            disabled={courseOutcomes.length >= 5}
+                                            onClick={() => setCourseOutcomes([...courseOutcomes, ""])}
+                                        >
+                                            + Add Outcome
+                                        </button>
                                     </div>
                                     {courseOutcomes.map((co, cIdx) => (
                                         <div key={cIdx} className="input-group mb-2">
-                                            <span className="input-group-text fw-bold bg-light">CO{cIdx + 1}</span>
-                                            <input type="text" className="form-control" placeholder={`Outcome statement for CO${cIdx + 1}...`} value={co} onChange={(e) => {
-                                                const u = [...courseOutcomes]; u[cIdx] = e.target.value; setCourseOutcomes(u);
-                                            }} />
+                                            <span className="input-group-text fw-bold bg-light">CO{cIdx + 1} *</span>
+                                            <input
+                                                type="text"
+                                                className="form-control"
+                                                placeholder={`Outcome statement for CO${cIdx + 1}...`}
+                                                value={co}
+                                                required
+                                                onChange={(e) => {
+                                                    const u = [...courseOutcomes];
+                                                    u[cIdx] = e.target.value;
+                                                    setCourseOutcomes(u);
+                                                }}
+                                            />
                                             {courseOutcomes.length > 3 && (
-                                                <button type="button" className="btn btn-outline-danger" onClick={() => setCourseOutcomes(courseOutcomes.filter((_, idx) => idx !== cIdx))}>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-outline-danger"
+                                                    onClick={() => setCourseOutcomes(courseOutcomes.filter((_, idx) => idx !== cIdx))}
+                                                >
                                                     <i className="bi bi-trash"></i>
                                                 </button>
                                             )}
@@ -922,12 +1000,14 @@ export default function TextSyllabusModal({
                                     ))}
                                 </div>
 
-                                {/* THEORY UNITS WITH SEQUENTIAL TOPIC NUMBERING */}
+                                {/* THEORY UNITS */}
                                 {L > 0 ? (
                                     <div className="card border p-3 mb-4 rounded-3 shadow-sm">
                                         <div className="d-flex justify-content-between align-items-center mb-2">
                                             <div>
-                                                <h6 className="fw-bold mb-0 text-primary">Unit-Wise Syllabus (Theory)</h6>
+                                                <h6 className="fw-bold mb-0 text-primary">
+                                                    Unit-Wise Syllabus (Theory) <span className="text-danger">*</span>
+                                                </h6>
                                                 <small className="text-muted">
                                                     Total Sessions: <strong className={currentTheoryTopicsCount === targetTheoryTopics ? "text-success" : "text-danger"}>{currentTheoryTopicsCount} / {targetTheoryTopics}</strong> (Must equal L × 12) • Units: <strong>{units.length} / 5</strong>
                                                 </small>
@@ -948,10 +1028,26 @@ export default function TextSyllabusModal({
                                             return (
                                                 <div key={uIdx} className="border p-3 rounded mb-3 bg-light-subtle">
                                                     <div className="d-flex justify-content-between align-items-center mb-2">
-                                                        <input type="text" className="form-control fw-bold me-2" value={unit.title} onChange={(e) => {
-                                                            const u = [...units]; u[uIdx].title = e.target.value; setUnits(u);
-                                                        }} placeholder={`Unit ${uIdx + 1}: Title`} />
-                                                        <button type="button" className="btn btn-sm btn-outline-danger text-nowrap" onClick={() => handleRemoveUnit(uIdx)}>Remove Unit</button>
+                                                        <div className="input-group me-2">
+                                                            <span className="input-group-text fw-semibold small bg-white text-muted">
+                                                                Unit {uIdx + 1} Title *
+                                                            </span>
+                                                            <input
+                                                                type="text"
+                                                                className="form-control fw-bold"
+                                                                value={unit.title}
+                                                                required
+                                                                onChange={(e) => {
+                                                                    const u = [...units];
+                                                                    u[uIdx].title = e.target.value;
+                                                                    setUnits(u);
+                                                                }}
+                                                                placeholder={`Unit ${uIdx + 1}: Title`}
+                                                            />
+                                                        </div>
+                                                        <button type="button" className="btn btn-sm btn-outline-danger text-nowrap" onClick={() => handleRemoveUnit(uIdx)}>
+                                                            Remove Unit
+                                                        </button>
                                                     </div>
 
                                                     {(unit.topics || []).map((top, tIdx) => {
@@ -959,11 +1055,20 @@ export default function TextSyllabusModal({
                                                         return (
                                                             <div key={tIdx} className="input-group mb-1">
                                                                 <span className="input-group-text small fw-bold bg-light" style={{ minWidth: "45px", justifyContent: "center" }}>
-                                                                    {sequentialTopicNumber}
+                                                                    {sequentialTopicNumber} *
                                                                 </span>
-                                                                <input type="text" className="form-control form-control-sm" placeholder={`Session description for topic #${sequentialTopicNumber}...`} value={top} onChange={(e) => {
-                                                                    const u = [...units]; u[uIdx].topics[tIdx] = e.target.value; setUnits(u);
-                                                                }} />
+                                                                <input
+                                                                    type="text"
+                                                                    className="form-control form-control-sm"
+                                                                    placeholder={`Session description for topic #${sequentialTopicNumber}...`}
+                                                                    value={top}
+                                                                    required
+                                                                    onChange={(e) => {
+                                                                        const u = [...units];
+                                                                        u[uIdx].topics[tIdx] = e.target.value;
+                                                                        setUnits(u);
+                                                                    }}
+                                                                />
                                                                 <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => handleRemoveTopicFromUnit(uIdx, tIdx)}>
                                                                     <i className="bi bi-x"></i>
                                                                 </button>
@@ -994,7 +1099,9 @@ export default function TextSyllabusModal({
                                     <div className="card border p-3 mb-4 rounded-3 shadow-sm">
                                         <div className="d-flex justify-content-between align-items-center mb-2">
                                             <div>
-                                                <h6 className="fw-bold mb-0 text-primary">Recitation / Tutorial Topics</h6>
+                                                <h6 className="fw-bold mb-0 text-primary">
+                                                    Recitation / Tutorial Topics <span className="text-danger">*</span>
+                                                </h6>
                                                 <small className="text-muted">
                                                     Sessions: <strong className={recitations.length === targetRecitationTopics ? "text-success" : "text-danger"}>{recitations.length} / {targetRecitationTopics}</strong> (Must equal R × 12)
                                                 </small>
@@ -1003,10 +1110,19 @@ export default function TextSyllabusModal({
                                         </div>
                                         {recitations.map((rec, rIdx) => (
                                             <div key={rIdx} className="input-group mb-2">
-                                                <span className="input-group-text small fw-bold">{rIdx + 1}</span>
-                                                <input type="text" className="form-control form-control-sm" placeholder="Recitation Sessions..." value={rec} onChange={(e) => {
-                                                    const r = [...recitations]; r[rIdx] = e.target.value; setRecitations(r);
-                                                }} />
+                                                <span className="input-group-text small fw-bold">{rIdx + 1} *</span>
+                                                <input
+                                                    type="text"
+                                                    className="form-control form-control-sm"
+                                                    placeholder="Recitation session description..."
+                                                    value={rec}
+                                                    required
+                                                    onChange={(e) => {
+                                                        const r = [...recitations];
+                                                        r[rIdx] = e.target.value;
+                                                        setRecitations(r);
+                                                    }}
+                                                />
                                                 <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => setRecitations(recitations.filter((_, idx) => idx !== rIdx))}>
                                                     <i className="bi bi-x"></i>
                                                 </button>
@@ -1022,7 +1138,9 @@ export default function TextSyllabusModal({
                                     <div className="card border p-3 mb-4 rounded-3 shadow-sm">
                                         <div className="d-flex justify-content-between align-items-center mb-2">
                                             <div>
-                                                <h6 className="fw-bold mb-0 text-primary">Lab / Product Components</h6>
+                                                <h6 className="fw-bold mb-0 text-primary">
+                                                    Lab / Product Components <span className="text-danger">*</span>
+                                                </h6>
                                                 <small className="text-muted">
                                                     Sessions: <strong className={labComponents.length === targetLabTopics ? "text-success" : "text-danger"}>{labComponents.length} / {targetLabTopics}</strong> (Must equal (P/2) × 12)
                                                 </small>
@@ -1031,10 +1149,19 @@ export default function TextSyllabusModal({
                                         </div>
                                         {labComponents.map((lab, lIdx) => (
                                             <div key={lIdx} className="input-group mb-2">
-                                                <span className="input-group-text small fw-bold">{lIdx + 1}</span>
-                                                <input type="text" className="form-control form-control-sm" placeholder="Lab activity..." value={lab} onChange={(e) => {
-                                                    const l = [...labComponents]; l[lIdx] = e.target.value; setLabComponents(l);
-                                                }} />
+                                                <span className="input-group-text small fw-bold">{lIdx + 1} *</span>
+                                                <input
+                                                    type="text"
+                                                    className="form-control form-control-sm"
+                                                    placeholder="Lab activity description..."
+                                                    value={lab}
+                                                    required
+                                                    onChange={(e) => {
+                                                        const l = [...labComponents];
+                                                        l[lIdx] = e.target.value;
+                                                        setLabComponents(l);
+                                                    }}
+                                                />
                                                 <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => setLabComponents(labComponents.filter((_, idx) => idx !== lIdx))}>
                                                     <i className="bi bi-x"></i>
                                                 </button>
@@ -1045,10 +1172,15 @@ export default function TextSyllabusModal({
                                     <div className="alert alert-secondary small mb-4">Laboratory Section: Not Applicable (P = 0)</div>
                                 )}
 
-                                {/* TEXTBOOKS */}
+                                {/* TEXTBOOKS (EVERY INPUT EXCEPT EDITION IS COMPULSORY) */}
                                 <div className="card border p-3 mb-4 rounded-3 shadow-sm">
                                     <div className="d-flex justify-content-between align-items-center mb-2">
-                                        <h6 className="fw-bold mb-0 text-primary">Textbooks (Maximum 2)</h6>
+                                        <div>
+                                            <h6 className="fw-bold mb-0 text-primary">
+                                                Textbooks (Maximum 2) <span className="text-danger">*</span>
+                                            </h6>
+                                            <small className="text-muted">All fields except Edition are compulsory.</small>
+                                        </div>
                                         <button
                                             type="button"
                                             className="btn btn-sm btn-outline-primary"
@@ -1070,11 +1202,14 @@ export default function TextSyllabusModal({
                                             </div>
                                             <div className="row g-2">
                                                 <div className="col-md-6">
-                                                    <label className="form-label small text-muted mb-0">Book Title *</label>
+                                                    <label className="form-label small text-muted mb-0">
+                                                        Book Title <span className="text-danger">*</span>
+                                                    </label>
                                                     <input
                                                         type="text"
                                                         className="form-control form-control-sm"
                                                         placeholder="e.g. Modern Operating Systems"
+                                                        required
                                                         value={tb.title || ""}
                                                         onChange={(e) => {
                                                             const updated = [...textbooks];
@@ -1084,11 +1219,14 @@ export default function TextSyllabusModal({
                                                     />
                                                 </div>
                                                 <div className="col-md-6">
-                                                    <label className="form-label small text-muted mb-0">Author(s) *</label>
+                                                    <label className="form-label small text-muted mb-0">
+                                                        Author(s) <span className="text-danger">*</span>
+                                                    </label>
                                                     <input
                                                         type="text"
                                                         className="form-control form-control-sm"
                                                         placeholder="e.g. Andrew S. Tanenbaum, Herbert Bos"
+                                                        required
                                                         value={tb.author || ""}
                                                         onChange={(e) => {
                                                             const updated = [...textbooks];
@@ -1098,7 +1236,9 @@ export default function TextSyllabusModal({
                                                     />
                                                 </div>
                                                 <div className="col-md-4">
-                                                    <label className="form-label small text-muted mb-0">Edition</label>
+                                                    <label className="form-label small text-muted mb-0">
+                                                        Edition <span className="text-muted">(Optional)</span>
+                                                    </label>
                                                     <input
                                                         type="text"
                                                         className="form-control form-control-sm"
@@ -1112,11 +1252,14 @@ export default function TextSyllabusModal({
                                                     />
                                                 </div>
                                                 <div className="col-md-5">
-                                                    <label className="form-label small text-muted mb-0">Publisher</label>
+                                                    <label className="form-label small text-muted mb-0">
+                                                        Publisher <span className="text-danger">*</span>
+                                                    </label>
                                                     <input
                                                         type="text"
                                                         className="form-control form-control-sm"
                                                         placeholder="e.g. Pearson Education"
+                                                        required
                                                         value={tb.publisher || ""}
                                                         onChange={(e) => {
                                                             const updated = [...textbooks];
@@ -1126,11 +1269,14 @@ export default function TextSyllabusModal({
                                                     />
                                                 </div>
                                                 <div className="col-md-3">
-                                                    <label className="form-label small text-muted mb-0">Year</label>
+                                                    <label className="form-label small text-muted mb-0">
+                                                        Year <span className="text-danger">*</span>
+                                                    </label>
                                                     <input
                                                         type="text"
                                                         className="form-control form-control-sm"
                                                         placeholder="e.g. 2015"
+                                                        required
                                                         value={tb.year || ""}
                                                         onChange={(e) => {
                                                             const updated = [...textbooks];
@@ -1144,10 +1290,13 @@ export default function TextSyllabusModal({
                                     ))}
                                 </div>
 
-                                {/* REFERENCE BOOKS */}
+                                {/* REFERENCE BOOKS (IF ADDED, EVERYTHING EXCEPT EDITION IS COMPULSORY) */}
                                 <div className="card border p-3 mb-4 rounded-3 shadow-sm">
                                     <div className="d-flex justify-content-between align-items-center mb-2">
-                                        <h6 className="fw-bold mb-0 text-primary">Reference Books (Maximum 2)</h6>
+                                        <div>
+                                            <h6 className="fw-bold mb-0 text-primary">Reference Books (Maximum 2)</h6>
+                                            <small className="text-muted">Optional section. If added, all fields except Edition are compulsory.</small>
+                                        </div>
                                         <button
                                             type="button"
                                             className="btn btn-sm btn-outline-primary"
@@ -1157,99 +1306,119 @@ export default function TextSyllabusModal({
                                             + Add Reference Book
                                         </button>
                                     </div>
-                                    {referenceBooks.map((rb, idx) => (
-                                        <div key={idx} className="border p-3 rounded mb-2 bg-light-subtle">
-                                            <div className="d-flex justify-content-between align-items-center mb-2">
-                                                <strong className="text-secondary small">Reference Book #{idx + 1}</strong>
-                                                <button type="button" className="btn btn-sm btn-outline-danger py-0 px-2" onClick={() => setReferenceBooks(referenceBooks.filter((_, i) => i !== idx))}>
-                                                    Remove
-                                                </button>
-                                            </div>
-                                            <div className="row g-2">
-                                                <div className="col-md-6">
-                                                    <label className="form-label small text-muted mb-0">Book Title</label>
-                                                    <input
-                                                        type="text"
-                                                        className="form-control form-control-sm"
-                                                        placeholder="Title of reference book..."
-                                                        value={rb.title || ""}
-                                                        onChange={(e) => {
-                                                            const updated = [...referenceBooks];
-                                                            updated[idx].title = e.target.value;
-                                                            setReferenceBooks(updated);
-                                                        }}
-                                                    />
-                                                </div>
-                                                <div className="col-md-6">
-                                                    <label className="form-label small text-muted mb-0">Author(s)</label>
-                                                    <input
-                                                        type="text"
-                                                        className="form-control form-control-sm"
-                                                        placeholder="Author(s)..."
-                                                        value={rb.author || ""}
-                                                        onChange={(e) => {
-                                                            const updated = [...referenceBooks];
-                                                            updated[idx].author = e.target.value;
-                                                            setReferenceBooks(updated);
-                                                        }}
-                                                    />
-                                                </div>
-                                                <div className="col-md-4">
-                                                    <label className="form-label small text-muted mb-0">Edition</label>
-                                                    <input
-                                                        type="text"
-                                                        className="form-control form-control-sm"
-                                                        placeholder="e.g. 2nd Edition"
-                                                        value={rb.edition || ""}
-                                                        onChange={(e) => {
-                                                            const updated = [...referenceBooks];
-                                                            updated[idx].edition = e.target.value;
-                                                            setReferenceBooks(updated);
-                                                        }}
-                                                    />
-                                                </div>
-                                                <div className="col-md-5">
-                                                    <label className="form-label small text-muted mb-0">Publisher</label>
-                                                    <input
-                                                        type="text"
-                                                        className="form-control form-control-sm"
-                                                        placeholder="Publisher..."
-                                                        value={rb.publisher || ""}
-                                                        onChange={(e) => {
-                                                            const updated = [...referenceBooks];
-                                                            updated[idx].publisher = e.target.value;
-                                                            setReferenceBooks(updated);
-                                                        }}
-                                                    />
-                                                </div>
-                                                <div className="col-md-3">
-                                                    <label className="form-label small text-muted mb-0">Year</label>
-                                                    <input
-                                                        type="text"
-                                                        className="form-control form-control-sm"
-                                                        placeholder="e.g. 2020"
-                                                        value={rb.year || ""}
-                                                        onChange={(e) => {
-                                                            const updated = [...referenceBooks];
-                                                            updated[idx].year = e.target.value;
-                                                            setReferenceBooks(updated);
-                                                        }}
-                                                    />
-                                                </div>
-                                            </div>
+                                    {referenceBooks.length === 0 ? (
+                                        <div className="text-muted small fst-italic p-2 bg-light rounded text-center">
+                                            No reference books added. Click "+ Add Reference Book" if applicable.
                                         </div>
-                                    ))}
+                                    ) : (
+                                        referenceBooks.map((rb, idx) => (
+                                            <div key={idx} className="border p-3 rounded mb-2 bg-light-subtle">
+                                                <div className="d-flex justify-content-between align-items-center mb-2">
+                                                    <strong className="text-secondary small">Reference Book #{idx + 1}</strong>
+                                                    <button type="button" className="btn btn-sm btn-outline-danger py-0 px-2" onClick={() => setReferenceBooks(referenceBooks.filter((_, i) => i !== idx))}>
+                                                        Remove
+                                                    </button>
+                                                </div>
+                                                <div className="row g-2">
+                                                    <div className="col-md-6">
+                                                        <label className="form-label small text-muted mb-0">
+                                                            Book Title <span className="text-danger">*</span>
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            className="form-control form-control-sm"
+                                                            placeholder="Title of reference book..."
+                                                            required
+                                                            value={rb.title || ""}
+                                                            onChange={(e) => {
+                                                                const updated = [...referenceBooks];
+                                                                updated[idx].title = e.target.value;
+                                                                setReferenceBooks(updated);
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <div className="col-md-6">
+                                                        <label className="form-label small text-muted mb-0">
+                                                            Author(s) <span className="text-danger">*</span>
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            className="form-control form-control-sm"
+                                                            placeholder="Author(s)..."
+                                                            required
+                                                            value={rb.author || ""}
+                                                            onChange={(e) => {
+                                                                const updated = [...referenceBooks];
+                                                                updated[idx].author = e.target.value;
+                                                                setReferenceBooks(updated);
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <div className="col-md-4">
+                                                        <label className="form-label small text-muted mb-0">
+                                                            Edition <span className="text-muted">(Optional)</span>
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            className="form-control form-control-sm"
+                                                            placeholder="e.g. 2nd Edition"
+                                                            value={rb.edition || ""}
+                                                            onChange={(e) => {
+                                                                const updated = [...referenceBooks];
+                                                                updated[idx].edition = e.target.value;
+                                                                setReferenceBooks(updated);
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <div className="col-md-5">
+                                                        <label className="form-label small text-muted mb-0">
+                                                            Publisher <span className="text-danger">*</span>
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            className="form-control form-control-sm"
+                                                            placeholder="Publisher..."
+                                                            required
+                                                            value={rb.publisher || ""}
+                                                            onChange={(e) => {
+                                                                const updated = [...referenceBooks];
+                                                                updated[idx].publisher = e.target.value;
+                                                                setReferenceBooks(updated);
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <div className="col-md-3">
+                                                        <label className="form-label small text-muted mb-0">
+                                                            Year <span className="text-danger">*</span>
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            className="form-control form-control-sm"
+                                                            placeholder="e.g. 2020"
+                                                            required
+                                                            value={rb.year || ""}
+                                                            onChange={(e) => {
+                                                                const updated = [...referenceBooks];
+                                                                updated[idx].year = e.target.value;
+                                                                setReferenceBooks(updated);
+                                                            }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
                                 </div>
 
-                                {/* REFERENCE LINKS / ONLINE RESOURCES (MAX 3) */}
+                                {/* REFERENCE LINKS / ONLINE RESOURCES (PLATFORM, TOPIC & LINK COMPULSORY) */}
                                 <div className="card border p-3 mb-4 rounded-3 shadow-sm">
                                     <div className="d-flex justify-content-between align-items-center mb-3">
                                         <div>
                                             <h6 className="fw-bold mb-0 text-primary">
-                                                <i className="bi bi-link-45deg me-1"></i> Reference Links & Online Resources
+                                                <i className="bi bi-link-45deg me-1"></i> Reference Links & Online Resources <span className="text-danger">*</span>
                                             </h6>
                                             <small className="text-muted">
-                                                Add up to <strong>3</strong> links • Platform, Topic (Max 30 words), and verified URL.
+                                                Add up to <strong>3</strong> links • Platform, Topic (Max 30 words), and verified URL are compulsory.
                                             </small>
                                         </div>
                                         <button
@@ -1287,12 +1456,13 @@ export default function TextSyllabusModal({
                                                 <div className="row g-2 align-items-start">
                                                     <div className="col-md-3">
                                                         <label className="form-label small fw-semibold text-muted mb-1">
-                                                            Platform / Source *
+                                                            Platform / Source <span className="text-danger">*</span>
                                                         </label>
                                                         <input
                                                             type="text"
                                                             className="form-control form-control-sm"
                                                             placeholder="e.g. Coursera, Simplilearn, NPTEL"
+                                                            required
                                                             value={res.platform || ""}
                                                             onChange={(e) => {
                                                                 const updated = [...onlineResources];
@@ -1305,7 +1475,7 @@ export default function TextSyllabusModal({
                                                     <div className="col-md-5">
                                                         <div className="d-flex justify-content-between align-items-center mb-1">
                                                             <label className="form-label small fw-semibold text-muted mb-0">
-                                                                Topic Description
+                                                                Topic Description <span className="text-danger">*</span>
                                                             </label>
                                                             <span className={`small ${words > 30 ? "text-danger fw-bold" : "text-muted"}`} style={{ fontSize: "0.75rem" }}>
                                                                 {words} / 30 words
@@ -1315,6 +1485,7 @@ export default function TextSyllabusModal({
                                                             type="text"
                                                             className={`form-control form-control-sm ${words > 30 ? "is-invalid border-danger" : ""}`}
                                                             placeholder="Enter topic name (Max 30 words)..."
+                                                            required
                                                             value={res.topic || ""}
                                                             onChange={(e) => {
                                                                 const updated = [...onlineResources];
@@ -1332,7 +1503,7 @@ export default function TextSyllabusModal({
                                                     <div className="col-md-4">
                                                         <div className="d-flex justify-content-between align-items-center mb-1">
                                                             <label className="form-label small fw-semibold text-muted mb-0">
-                                                                Link / URL *
+                                                                Link / URL <span className="text-danger">*</span>
                                                             </label>
                                                             {urlValid !== null && (
                                                                 <span className={`small fw-semibold ${urlValid ? "text-success" : "text-danger"}`} style={{ fontSize: "0.75rem" }}>
@@ -1344,6 +1515,7 @@ export default function TextSyllabusModal({
                                                             type="url"
                                                             className={`form-control form-control-sm ${urlValid === false ? "is-invalid border-danger" : urlValid === true ? "is-valid border-success" : ""}`}
                                                             placeholder="https://www.coursera.org/..."
+                                                            required
                                                             value={res.url || ""}
                                                             onChange={(e) => {
                                                                 const updated = [...onlineResources];

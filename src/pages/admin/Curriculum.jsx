@@ -105,10 +105,15 @@ function Curriculum() {
         return list;
     }, [maxSemesters]);
 
+    // Format header title to include Specialization in parenthesis if configured
     const programHeader = useMemo(() => {
         if (!regulationCode && !departmentCode) return "";
-        const progName = selectedProgram?.name ? `(${selectedProgram.name})` : "";
-        return `${regulationCode} - ${departmentCode} ${progName}`.trim();
+        const progTitle = selectedProgram?.name
+            ? selectedProgram.specialization
+                ? `(${selectedProgram.name} (${selectedProgram.specialization}))`
+                : `(${selectedProgram.name})`
+            : "";
+        return `${regulationCode} - ${departmentCode} ${progTitle}`.trim();
     }, [regulationCode, departmentCode, selectedProgram]);
 
     const clearCurriculum = () => {
@@ -298,6 +303,7 @@ function Curriculum() {
                 departmentCode,
                 programCode,
                 programName: selectedProgram?.name,
+                specialization: selectedProgram?.specialization,
                 curricula,
                 subjectsMap: subjects,
             });
@@ -576,7 +582,7 @@ function Curriculum() {
                                 </option>
                                 {availablePrograms.map((prog) => (
                                     <option key={prog.code} value={prog.code}>
-                                        {prog.name} ({prog.totalSemesters} Semesters)
+                                        {prog.name}{prog.specialization ? ` (${prog.specialization})` : ""} ({prog.totalSemesters} Semesters)
                                     </option>
                                 ))}
                             </select>
@@ -639,7 +645,7 @@ function Curriculum() {
                         const track1Practical = track1Items.reduce((s, x) => s + (Number(x.data.practical) || 0), 0);
                         const track1Credits = track1Items.reduce((s, x) => s + getCredit(x.data), 0);
 
-                        // CALCULATE TOTAL HOURS BEFORE OR (L + R + P)
+                        // CALCULATE TOTAL HOURS: L + R + P
                         const totalHoursTrack1 = track1Lecture + track1Tutorial + track1Practical;
 
                         const track2Lecture = track2Items.reduce((s, x) => s + (Number(x.data.lecture) || 0), 0);

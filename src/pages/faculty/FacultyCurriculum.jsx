@@ -111,10 +111,15 @@ function FacultyCurriculum() {
         return list;
     }, [maxSemesters]);
 
+    // Format header title to include Specialization in parenthesis if configured
     const programHeader = useMemo(() => {
         if (!regulationCode && !departmentCode) return "";
-        const progName = selectedProgram?.name ? `(${selectedProgram.name})` : "";
-        return `${regulationCode} - ${departmentCode} ${progName}`.trim();
+        const progTitle = selectedProgram?.name
+            ? selectedProgram.specialization
+                ? `(${selectedProgram.name} (${selectedProgram.specialization}))`
+                : `(${selectedProgram.name})`
+            : "";
+        return `${regulationCode} - ${departmentCode} ${progTitle}`.trim();
     }, [regulationCode, departmentCode, selectedProgram]);
 
     const clearCurriculum = () => {
@@ -294,6 +299,7 @@ function FacultyCurriculum() {
                 departmentCode,
                 programCode,
                 programName: selectedProgram?.name,
+                specialization: selectedProgram?.specialization,
                 curricula,
                 subjectsMap: subjects,
             });
@@ -557,7 +563,7 @@ function FacultyCurriculum() {
                                 </option>
                                 {availablePrograms.map((prog) => (
                                     <option key={prog.code} value={prog.code}>
-                                        {prog.name} ({prog.totalSemesters} Semesters)
+                                        {prog.name}{prog.specialization ? ` (${prog.specialization})` : ""} ({prog.totalSemesters} Semesters)
                                     </option>
                                 ))}
                             </select>
