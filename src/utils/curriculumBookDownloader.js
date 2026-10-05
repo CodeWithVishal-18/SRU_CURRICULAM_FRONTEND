@@ -26,7 +26,6 @@ export async function downloadCompleteCurriculumBook({
             });
         });
     });
-
     // 2. Fetch full syllabus JSON for all subjects in parallel
     const syllabusDetailMap = {};
     await Promise.all(
