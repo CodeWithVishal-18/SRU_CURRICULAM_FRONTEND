@@ -41,7 +41,6 @@ export async function downloadCompleteCurriculumBook({
             }
         })
     );
-
     // Helpers
     const formatNum = (v) => {
         const n = Number(v) || 0;
