@@ -290,7 +290,6 @@ function FacultyCurriculum() {
             toast.warning("Please search and load the curriculum first.");
             return;
         }
-
         try {
             setDownloadingBook(true);
             toast.info("Compiling complete curriculum and all syllabi into PDF book...");
@@ -311,7 +310,6 @@ function FacultyCurriculum() {
             setDownloadingBook(false);
         }
     };
-
     const handleToggleElectiveGroup = async (group) => {
         const groupId = group.id;
         setExpandedGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
