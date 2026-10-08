@@ -49,7 +49,6 @@ function FacultyCurriculum() {
 
     const canUploadCourse = isOwnDepartment;
     const canUploadElective = isFacultyRole;
-
     useEffect(() => {
         const loadInitialData = async () => {
             try {
