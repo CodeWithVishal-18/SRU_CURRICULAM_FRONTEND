@@ -55,7 +55,6 @@ function CourseStructure() {
                 (p.level || "UG").toUpperCase() === regLevel.toUpperCase()
         );
     }, [departmentCode, selectedRegulation, allPrograms]);
-
     const selectedProgram = useMemo(
         () => allPrograms.find((p) => p.code === programCode),
         [allPrograms, programCode]
